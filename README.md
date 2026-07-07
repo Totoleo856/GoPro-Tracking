@@ -1,68 +1,115 @@
-Vision du projet
+# GoPro Cinema Camera Tracker
 
-Je souhaite développer un outil Python de camera tracking destiné aux workflows VFX cinéma.
+## Vision du projet
 
-L'outil doit permettre de récupérer la trajectoire d'une caméra cinéma en utilisant une ou plusieurs GoPro fixées rigidement sur celle-ci.
+Ce projet vise à développer un outil Python de camera tracking destiné aux workflows VFX cinéma.
 
-L'objectif est d'obtenir une trajectoire de très haute précision, exploitable directement dans des logiciels comme Nuke, Blender ou Unreal Engine.
+L'objectif est de reconstruire la trajectoire d'une caméra cinéma à partir d'une ou plusieurs GoPro fixées rigidement sur celle-ci.
 
-Première approche : Postproduction
+Le résultat attendu est une trajectoire caméra de haute précision, exploitable directement dans des logiciels de production VFX et 3D tels que Nuke, Blender ou Unreal Engine.
 
-Cette première version fonctionne entièrement en postproduction.
+---
 
-Toutes les vidéos sont disponibles avant le traitement, il n'y a donc aucune contrainte de temps réel.
+## Première approche : Postproduction
 
-L'objectif est de privilégier la précision plutôt que la vitesse.
+La première version du projet fonctionne entièrement en postproduction.
 
-Workflow de tournage
+Toutes les données vidéo sont disponibles avant le traitement, ce qui permet de privilégier la précision du calcul plutôt que la vitesse d'exécution.
+
+L'objectif est d'obtenir la meilleure qualité de tracking possible dans un contexte professionnel VFX.
+
+---
+
+## Workflow de tournage
 
 Une ou plusieurs GoPro sont fixées rigidement sur la caméra cinéma.
 
-Au début de la prise, une cible ArUco est placée au sol et visible pendant environ une seconde.
+Au début de chaque prise, une cible ArUco est placée au sol et visible pendant une courte durée.
 
-Cette cible sert uniquement à :
+Cette cible permet uniquement de :
 
-définir le repère du monde ;
-calculer la transformation rigide entre la GoPro et la caméra cinéma.
+- définir un repère monde stable ;
+- calculer la transformation rigide entre la GoPro et la caméra cinéma.
 
-Une fois cette phase terminée, la cible n'est plus utilisée et la prise se déroule normalement.
+Après cette phase d'initialisation, la cible ArUco n'est plus utilisée.
 
-Le système ne doit pas nécessiter de revoir la cible pendant la prise afin de rester compatible avec les contraintes d'un tournage cinéma.
+La caméra peut ensuite évoluer librement pendant la prise, sans contrainte de conserver une référence visuelle.
 
-Résultat attendu
+Cette approche est pensée pour respecter les contraintes réelles d'un tournage cinéma.
 
-À partir des vidéos de la ou des GoPro, l'outil reconstruit la trajectoire complète de la caméra dans le repère défini lors de l'initialisation.
+---
 
-Cette trajectoire comprend :
+## Résultat attendu
 
-la position de la caméra ;
-son orientation ;
-une pose pour chaque image de la vidéo.
+À partir des vidéos capturées par la ou les GoPro, l'outil reconstruit la trajectoire complète de la caméra cinéma dans le repère défini lors de l'initialisation.
 
-Le résultat doit pouvoir être importé directement dans des logiciels de VFX ou de 3D.
+Le résultat contient :
 
-Niveau de qualité recherché
+- la position de la caméra ;
+- son orientation ;
+- une pose complète pour chaque image de la séquence.
 
-L'objectif est d'obtenir une précision aussi proche que possible du pixel perfect, afin que le tracking soit exploitable dans un workflow VFX cinéma.
+La trajectoire générée doit pouvoir être exportée et utilisée directement dans des logiciels VFX et 3D.
 
-La qualité du résultat est prioritaire sur le temps de calcul.
+---
 
-Contraintes techniques
+## Niveau de qualité recherché
+
+L'objectif est d'obtenir une précision maximale, proche du niveau requis pour un workflow VFX cinéma.
+
+La priorité est donnée à :
+
+- la précision du tracking ;
+- la stabilité de la trajectoire ;
+- la cohérence spatiale ;
+- la qualité d'export.
+
+Le temps de calcul n'est pas une contrainte prioritaire dans cette première approche.
+
+---
+
+## Contraintes techniques
 
 Le projet est développé en Python.
 
-Il peut s'appuyer sur des bibliothèques ou outils open source existants, comme COLMAP, à condition que leur licence soit compatible avec un usage commercial.
+Il peut utiliser des bibliothèques et outils open source existants, tels que COLMAP, à condition que leurs licences permettent un usage commercial.
 
-L'utilisateur ne doit pas avoir à manipuler ces outils directement : ils font partie de l'implémentation interne du projet.
+Les outils externes doivent être intégrés au pipeline interne et ne doivent pas nécessiter de manipulation directe par l'utilisateur final.
 
-L'objectif est de fournir un outil autonome qui réalise l'ensemble du pipeline jusqu'à l'export du fichier de tracking.
+L'objectif est de fournir une application autonome capable de gérer l'ensemble du workflow :
 
-Évolutions envisagées
+- calibration ;
+- reconstruction de trajectoire ;
+- optimisation ;
+- vérification ;
+- export.
 
-Une seconde approche sera développée ultérieurement pour réaliser un tracking en temps réel.
+---
 
-Pour le moment, le projet est entièrement centré sur la version postproduction.
+## Architecture générale envisagée
 
-Ce que je retiens surtout, c'est que tu ne cherches pas simplement à "faire un tracker". Tu cherches à concevoir un workflow de tracking adapté aux contraintes d'un tournage cinéma, où la technique s'efface au maximum derrière la simplicité d'utilisation et la qualité du résultat.
+Le pipeline est organisé autour de trois étapes principales :
 
-Si tu trouves que ce résumé correspond bien à ta vision, nous pourrons nous y référer comme base de travail pour toutes les discussions suivantes.
+### Calibration
+
+Détermination de la relation géométrique entre :
+
+- la GoPro ;
+- la caméra cinéma ;
+- le repère défini par la cible ArUco.
+
+### Tracking
+
+Reconstruction de la trajectoire de la GoPro, puis conversion vers la trajectoire du plan film de la caméra cinéma.
+
+### Vérification et Export
+
+Visualisation de la trajectoire reconstruite et export vers différents environnements VFX et 3D.
+
+---
+
+## Évolutions envisagées
+
+Une seconde approche sera développée ultérieurement pour permettre un tracking en temps réel.
+
+La première version du projet reste entièrement dédiée au traitement en postproduction, afin de maximiser la qualité et la robustesse du résultat.
