@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from camera import Camera
 from pose import Pose
@@ -18,8 +18,7 @@ class Rig:
 
     cinema_camera: Camera
     tracker_camera: Camera
-
-    gopro_to_cinema: Pose = Pose()
+    gopro_to_cinema: Pose = field(default_factory=Pose)
 
     def transform_tracker_to_cinema(self, tracker_pose: Pose) -> Pose:
         rotation = self.gopro_to_cinema.rotation @ tracker_pose.rotation
