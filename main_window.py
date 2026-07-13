@@ -21,13 +21,10 @@ from tracking import Tracker
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-
         self.setWindowTitle("GoPro Cinema Tracker")
         self.resize(900, 640)
-
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
-
         self.create_calibration_tab()
         self.create_tracking_tab()
         self.create_verification_tab()
@@ -42,11 +39,9 @@ class MainWindow(QMainWindow):
         row_layout = QHBoxLayout()
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.addWidget(line_edit)
-
         browse_button = QPushButton(button_text)
         browse_button.clicked.connect(lambda: self.browse_file(line_edit, filter))
         row_layout.addWidget(browse_button)
-
         row_widget.setLayout(row_layout)
         return row_widget
 
@@ -63,7 +58,8 @@ class MainWindow(QMainWindow):
         self.offset_left = QLineEdit()
         self.focal_length = QLineEdit()
         self.sensor_size = QLineEdit()
-        self.resolution = QLineEdit()
+        self.resolution_x = QLineEdit()
+        self.resolution_y = QLineEdit()
 
         self.charuco_squares_x = QLineEdit("5")
         self.charuco_squares_y = QLineEdit("7")
@@ -76,7 +72,7 @@ class MainWindow(QMainWindow):
         self.charuco_dictionary.setCurrentText("DICT_6X6_250")
 
         validator_float = QDoubleValidator()
-        validator_int = QIntValidator(2, 20)
+        validator_int = QIntValidator(1, 10000)
 
         self.offset_up.setValidator(validator_float)
         self.offset_forward.setValidator(validator_float)
@@ -87,8 +83,19 @@ class MainWindow(QMainWindow):
         self.charuco_marker_length.setValidator(validator_float)
         self.charuco_squares_x.setValidator(validator_int)
         self.charuco_squares_y.setValidator(validator_int)
+        self.resolution_x.setValidator(validator_int)
+        self.resolution_y.setValidator(validator_int)
 
-        self.resolution.setPlaceholderText("1920x1080")
+        self.resolution_x.setPlaceholderText("1920")
+        self.resolution_y.setPlaceholderText("1080")
+
+        resolution_widget = QWidget()
+        resolution_layout = QHBoxLayout()
+        resolution_layout.setContentsMargins(0, 0, 0, 0)
+        resolution_layout.addWidget(self.resolution_x)
+        resolution_layout.addWidget(QLabel("x"))
+        resolution_layout.addWidget(self.resolution_y)
+        resolution_widget.setLayout(resolution_layout)
 
         form.addRow("Modèle GoPro", self.gopro_model)
         form.addRow(
@@ -107,12 +114,12 @@ class MainWindow(QMainWindow):
                 "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)",
             ),
         )
-        form.addRow("Offset Up", self.offset_up)
-        form.addRow("Offset Forward", self.offset_forward)
-        form.addRow("Offset Left", self.offset_left)
-        form.addRow("Focale caméra cinéma", self.focal_length)
-        form.addRow("Taille capteur", self.sensor_size)
-        form.addRow("Résolution", self.resolution)
+        form.addRow("Offset Up (m)", self.offset_up)
+        form.addRow("Offset Forward (m)", self.offset_forward)
+        form.addRow("Offset Left (m)", self.offset_left)
+        form.addRow("Focale caméra cinéma (mm)", self.focal_length)
+        form.addRow("Largeur capteur (mm)", self.sensor_size)
+        form.addRow("Résolution", resolution_widget)
         form.addRow("Dictionary Charuco", self.charuco_dictionary)
         form.addRow("Squares X", self.charuco_squares_x)
         form.addRow("Squares Y", self.charuco_squares_y)
@@ -145,7 +152,10 @@ class MainWindow(QMainWindow):
             }
             focal = float(self.focal_length.text())
             sensor = float(self.sensor_size.text())
-            resolution = self.parse_resolution(self.resolution.text())
+            resolution = (
+                int(self.resolution_x.text()),
+                int(self.resolution_y.text()),
+            )
             board = {
                 "dictionary": self.charuco_dictionary.currentText(),
                 "squares_x": int(self.charuco_squares_x.text()),
@@ -170,8 +180,17 @@ class MainWindow(QMainWindow):
             charuco_board=board,
         )
 
+        output_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Enregistrer le fichier de calibration",
+            "calibration.json",
+            "JSON (*.json)",
+        )
+        if not output_path:
+            return
+
         try:
-            output_path = calibration.compute()
+            output_path = calibration.compute(output_path)
         except Exception as exc:
             QMessageBox.critical(self, "Erreur de calibration", str(exc))
             return

@@ -85,7 +85,6 @@ class Tracker:
             )
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
         params = cv2.aruco.DetectorParameters_create()
         corners, ids, _ = cv2.aruco.detectMarkers(
             gray, self.charuco_board.dictionary, parameters=params
@@ -101,7 +100,6 @@ class Tracker:
 
         camera_matrix = self.rig.tracker_camera.intrinsic_matrix
         dist_coeffs = self.rig.tracker_camera.distortion.reshape(-1, 1)
-
         retval, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
             charuco_corners,
             charuco_ids,

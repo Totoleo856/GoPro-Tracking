@@ -15,15 +15,7 @@ from pose import Pose
 
 
 class Calibration:
-    def __init__(
-        self,
-        gopro_model,
-        cinema_video,
-        gopro_video,
-        offset,
-        camera,
-        charuco_board=None,
-    ):
+    def __init__(self, gopro_model, cinema_video, gopro_video, offset, camera, charuco_board=None):
         self.gopro_model = gopro_model
         self.cinema_video = cinema_video
         self.gopro_video = gopro_video
@@ -96,13 +88,10 @@ class Calibration:
         }
 
     def _create_charuco_board(self):
-        if cv2 is None:
-            raise ImportError("OpenCV est requis pour Charuco")
         dictionary_name = self.charuco_board["dictionary"]
         if not hasattr(cv2.aruco, dictionary_name):
             raise ValueError(f"ArUco dictionary inconnu : {dictionary_name}")
-        dictionary = getattr(cv2.aruco, dictionary_name)
-        aruco_dict = cv2.aruco.Dictionary_get(dictionary)
+        aruco_dict = cv2.aruco.Dictionary_get(getattr(cv2.aruco, dictionary_name))
         return cv2.aruco.CharucoBoard_create(
             int(self.charuco_board["squares_x"]),
             int(self.charuco_board["squares_y"]),
@@ -167,7 +156,7 @@ class Calibration:
         capture.release()
         return None
 
-    def compute(self):
+    def compute(self, output_path: str = "data/calibration.json"):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
                 "OpenCV contrib est requis pour Charuco : pip install opencv-contrib-python"
@@ -211,7 +200,7 @@ class Calibration:
             },
         }
 
-        output = Path("data/calibration.json")
+        output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         with open(output, "w", encoding="utf-8") as file:
             json.dump(result, file, indent=4, ensure_ascii=False)
