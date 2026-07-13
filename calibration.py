@@ -88,6 +88,8 @@ class Calibration:
         }
 
     def _create_charuco_board(self):
+        if cv2 is None:
+            raise ImportError("OpenCV est requis pour Charuco")
         dictionary_name = self.charuco_board["dictionary"]
         if not hasattr(cv2.aruco, dictionary_name):
             raise ValueError(f"ArUco dictionary inconnu : {dictionary_name}")
@@ -124,7 +126,6 @@ class Calibration:
             raise FileNotFoundError(f"Impossible d'ouvrir la vidéo : {video_path}")
 
         board = self._create_charuco_board()
-        dictionary = board.dictionary
         params = cv2.aruco.DetectorParameters_create()
         camera_matrix = self._camera_matrix()
         dist_coeffs = np.zeros((5, 1), dtype=np.float64)
@@ -134,7 +135,7 @@ class Calibration:
             if not ok:
                 break
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            corners, ids, _ = cv2.aruco.detectMarkers(gray, dictionary, parameters=params)
+            corners, ids, _ = cv2.aruco.detectMarkers(gray, board.dictionary, parameters=params)
             if ids is None or len(ids) == 0:
                 continue
 
@@ -156,7 +157,7 @@ class Calibration:
         capture.release()
         return None
 
-    def compute(self, output_path: str = "data/calibration.json"):
+    def compute(self, output_path: str):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
                 "OpenCV contrib est requis pour Charuco : pip install opencv-contrib-python"
@@ -172,9 +173,10 @@ class Calibration:
         gopro_pose = self._detect_charuco_pose(self.gopro_video)
         cinema_pose = self._detect_charuco_pose(self.cinema_video)
 
-        rig_pose = Pose()
-        if gopro_pose is not None and cinema_pose is not None:
-            rig_pose = Pose.from_matrix(cinema_pose.matrix @ gopro_pose.inverse().matrix)
+        if gopro_pose is None or cinema_pose is None:
+            raise RuntimeError("Impossible d'extraire la pose Charuco sur l'une des vidéos.")
+
+        rig_pose = Pose.from_matrix(cinema_pose.matrix @ gopro_pose.inverse().matrix)
 
         result = {
             "camera": {

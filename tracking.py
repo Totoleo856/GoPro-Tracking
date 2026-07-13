@@ -78,6 +78,16 @@ class Tracker:
             aruco_dict,
         )
 
+    def _camera_matrix_from_camera(self, camera: Camera):
+        return np.array(
+            [
+                [camera.fx, 0.0, camera.cx],
+                [0.0, camera.fy, camera.cy],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+
     def _detect_pose_for_frame(self, frame):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
@@ -98,8 +108,9 @@ class Tracker:
         if charuco_ids is None or len(charuco_ids) < 4:
             return None
 
-        camera_matrix = self.rig.tracker_camera.intrinsic_matrix
-        dist_coeffs = self.rig.tracker_camera.distortion.reshape(-1, 1)
+        camera_matrix = self._camera_matrix_from_camera(self.rig.tracker_camera)
+        dist_coeffs = np.asarray(self.rig.tracker_camera.distortion, dtype=np.float64).reshape(-1, 1)
+
         retval, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
             charuco_corners,
             charuco_ids,
