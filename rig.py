@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .camera import Camera
-from .pose import Pose
+from camera import Camera
+from pose import Pose
 
 
 @dataclass
@@ -20,3 +20,11 @@ class Rig:
     tracker_camera: Camera
 
     gopro_to_cinema: Pose = Pose()
+
+    def transform_tracker_to_cinema(self, tracker_pose: Pose) -> Pose:
+        rotation = self.gopro_to_cinema.rotation @ tracker_pose.rotation
+        translation = (
+            self.gopro_to_cinema.rotation @ tracker_pose.translation
+            + self.gopro_to_cinema.translation
+        )
+        return Pose(rotation=rotation, translation=translation)

@@ -40,3 +40,11 @@ class Pose:
             rotation=matrix[:3, :3].copy(),
             translation=matrix[:3, 3].copy(),
         )
+
+    def inverse(self) -> "Pose":
+        """
+        Retourne l'inverse de la pose.
+        """
+        inv_rotation = self.rotation.T
+        inv_translation = -inv_rotation @ self.translation
+        return Pose(rotation=inv_rotation, translation=inv_translation)
