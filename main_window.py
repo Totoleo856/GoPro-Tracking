@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QComboBox,
 )
-from PyQt6.QtGui import QDoubleValidator
+from PyQt6.QtGui import QDoubleValidator, QIntValidator
 
 from calibration import Calibration
 from tracking import Tracker
@@ -23,7 +23,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("GoPro Cinema Tracker")
-        self.resize(900, 600)
+        self.resize(900, 640)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -64,28 +64,35 @@ class MainWindow(QMainWindow):
         self.focal_length = QLineEdit()
         self.sensor_size = QLineEdit()
         self.resolution = QLineEdit()
-        self.aruco_dictionary = QComboBox()
-        self.aruco_dictionary.addItems(
-            [
-                "DICT_4X4_50",
-                "DICT_5X5_100",
-                "DICT_6X6_250",
-                "DICT_7X7_1000",
-            ]
-        )
 
-        validator = QDoubleValidator()
-        self.offset_up.setValidator(validator)
-        self.offset_forward.setValidator(validator)
-        self.offset_left.setValidator(validator)
-        self.focal_length.setValidator(validator)
-        self.sensor_size.setValidator(validator)
+        self.charuco_squares_x = QLineEdit("5")
+        self.charuco_squares_y = QLineEdit("7")
+        self.charuco_square_length = QLineEdit("0.04")
+        self.charuco_marker_length = QLineEdit("0.03")
+        self.charuco_dictionary = QComboBox()
+        self.charuco_dictionary.addItems(
+            ["DICT_4X4_50", "DICT_5X5_100", "DICT_6X6_250", "DICT_7X7_1000"]
+        )
+        self.charuco_dictionary.setCurrentText("DICT_6X6_250")
+
+        validator_float = QDoubleValidator()
+        validator_int = QIntValidator(2, 20)
+
+        self.offset_up.setValidator(validator_float)
+        self.offset_forward.setValidator(validator_float)
+        self.offset_left.setValidator(validator_float)
+        self.focal_length.setValidator(validator_float)
+        self.sensor_size.setValidator(validator_float)
+        self.charuco_square_length.setValidator(validator_float)
+        self.charuco_marker_length.setValidator(validator_float)
+        self.charuco_squares_x.setValidator(validator_int)
+        self.charuco_squares_y.setValidator(validator_int)
 
         self.resolution.setPlaceholderText("1920x1080")
 
         form.addRow("Modèle GoPro", self.gopro_model)
         form.addRow(
-            "Vidéo caméra cinéma + ArUco",
+            "Vidéo caméra cinéma + Charuco",
             self.create_file_row(
                 self.cinema_calibration_video,
                 "Parcourir",
@@ -93,7 +100,7 @@ class MainWindow(QMainWindow):
             ),
         )
         form.addRow(
-            "Vidéo GoPro + ArUco",
+            "Vidéo GoPro + Charuco",
             self.create_file_row(
                 self.gopro_calibration_video,
                 "Parcourir",
@@ -106,7 +113,11 @@ class MainWindow(QMainWindow):
         form.addRow("Focale caméra cinéma", self.focal_length)
         form.addRow("Taille capteur", self.sensor_size)
         form.addRow("Résolution", self.resolution)
-        form.addRow("Cible ArUco", self.aruco_dictionary)
+        form.addRow("Dictionary Charuco", self.charuco_dictionary)
+        form.addRow("Squares X", self.charuco_squares_x)
+        form.addRow("Squares Y", self.charuco_squares_y)
+        form.addRow("Square length (m)", self.charuco_square_length)
+        form.addRow("Marker length (m)", self.charuco_marker_length)
 
         layout.addLayout(form)
 
@@ -135,6 +146,13 @@ class MainWindow(QMainWindow):
             focal = float(self.focal_length.text())
             sensor = float(self.sensor_size.text())
             resolution = self.parse_resolution(self.resolution.text())
+            board = {
+                "dictionary": self.charuco_dictionary.currentText(),
+                "squares_x": int(self.charuco_squares_x.text()),
+                "squares_y": int(self.charuco_squares_y.text()),
+                "square_length": float(self.charuco_square_length.text()),
+                "marker_length": float(self.charuco_marker_length.text()),
+            }
         except ValueError as exc:
             QMessageBox.warning(self, "Erreur de saisie", str(exc))
             return
@@ -149,7 +167,7 @@ class MainWindow(QMainWindow):
                 "sensor": sensor,
                 "resolution": resolution,
             },
-            aruco_dict=self.aruco_dictionary.currentText(),
+            charuco_board=board,
         )
 
         try:

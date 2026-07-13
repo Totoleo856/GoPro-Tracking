@@ -16,16 +16,12 @@ class Pose:
     rotation: np.ndarray = field(
         default_factory=lambda: np.eye(3, dtype=np.float64)
     )
-
     translation: np.ndarray = field(
         default_factory=lambda: np.zeros(3, dtype=np.float64)
     )
 
     @property
     def matrix(self) -> np.ndarray:
-        """
-        Retourne la matrice homogène 4x4.
-        """
         T = np.eye(4, dtype=np.float64)
         T[:3, :3] = self.rotation
         T[:3, 3] = self.translation
@@ -33,9 +29,6 @@ class Pose:
 
     @classmethod
     def from_matrix(cls, matrix: np.ndarray) -> "Pose":
-        """
-        Construit une pose à partir d'une matrice homogène 4x4.
-        """
         return cls(
             rotation=matrix[:3, :3].copy(),
             translation=matrix[:3, 3].copy(),
