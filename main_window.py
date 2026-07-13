@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QMessageBox,
     QHBoxLayout,
+    QComboBox,
 )
 from PyQt6.QtGui import QDoubleValidator
 
@@ -63,6 +64,15 @@ class MainWindow(QMainWindow):
         self.focal_length = QLineEdit()
         self.sensor_size = QLineEdit()
         self.resolution = QLineEdit()
+        self.aruco_dictionary = QComboBox()
+        self.aruco_dictionary.addItems(
+            [
+                "DICT_4X4_50",
+                "DICT_5X5_100",
+                "DICT_6X6_250",
+                "DICT_7X7_1000",
+            ]
+        )
 
         validator = QDoubleValidator()
         self.offset_up.setValidator(validator)
@@ -96,6 +106,7 @@ class MainWindow(QMainWindow):
         form.addRow("Focale caméra cinéma", self.focal_length)
         form.addRow("Taille capteur", self.sensor_size)
         form.addRow("Résolution", self.resolution)
+        form.addRow("Cible ArUco", self.aruco_dictionary)
 
         layout.addLayout(form)
 
@@ -138,6 +149,7 @@ class MainWindow(QMainWindow):
                 "sensor": sensor,
                 "resolution": resolution,
             },
+            aruco_dict=self.aruco_dictionary.currentText(),
         )
 
         try:

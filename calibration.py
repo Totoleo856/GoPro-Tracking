@@ -15,12 +15,13 @@ from pose import Pose
 
 
 class Calibration:
-    def __init__(self, gopro_model, cinema_video, gopro_video, offset, camera):
+    def __init__(self, gopro_model, cinema_video, gopro_video, offset, camera, aruco_dict="DICT_6X6_250"):
         self.gopro_model = gopro_model
         self.cinema_video = cinema_video
         self.gopro_video = gopro_video
         self.offset = offset
         self.camera = camera
+        self.aruco_dict = aruco_dict
 
     def _create_camera(self, name: str) -> Camera:
         width, height = self.camera["resolution"]
@@ -80,6 +81,11 @@ class Calibration:
             z = 0.0
         return {"x": float(math.degrees(x)), "y": float(math.degrees(y)), "z": float(math.degrees(z))}
 
+    def _aruco_dictionary(self):
+        if not hasattr(cv2.aruco, self.aruco_dict):
+            raise ValueError(f"ArUco dictionary inconnu : {self.aruco_dict}")
+        return getattr(cv2.aruco, self.aruco_dict)
+
     def _detect_aruco_pose(self, video_path, marker_length=0.2):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
@@ -91,7 +97,7 @@ class Calibration:
             raise FileNotFoundError(f"Impossible d'ouvrir la vidéo : {video_path}")
 
         detector_params = cv2.aruco.DetectorParameters_create()
-        aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_250)
+        aruco_dict = cv2.aruco.Dictionary_get(self._aruco_dictionary())
         camera = self._create_camera("GoPro")
         camera_matrix = camera.intrinsic_matrix
         dist_coeffs = camera.distortion.reshape(-1, 1)
