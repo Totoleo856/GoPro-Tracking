@@ -403,7 +403,7 @@ class MainWindow(QMainWindow):
         combo.addItems(list_profiles(kind))
         combo.blockSignals(False)
 
-    def _create_profile_bar(self, kind, on_load, get_current_values):
+    def _create_profile_bar(self, kind, on_load, get_current_values, name_field=None):
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -429,10 +429,19 @@ class MainWindow(QMainWindow):
         save_button = QPushButton("Enregistrer...")
 
         def handle_save():
-            name, ok = QInputDialog.getText(self, "Enregistrer le profil", "Nom du profil :")
-            name = name.strip()
-            if not ok or not name:
-                return
+            if name_field is not None:
+                name = name_field.text().strip()
+                if not name:
+                    QMessageBox.warning(
+                        self, "Nom manquant",
+                        "Veuillez renseigner le champ \"Modèle\" avant d'enregistrer le profil.",
+                    )
+                    return
+            else:
+                name, ok = QInputDialog.getText(self, "Enregistrer le profil", "Nom du profil :")
+                name = name.strip()
+                if not ok or not name:
+                    return
             try:
                 data = get_current_values()
                 save_profile(kind, name, data)
@@ -672,7 +681,7 @@ class MainWindow(QMainWindow):
         gopro_camera_layout = QVBoxLayout(gopro_camera_group)
         gopro_camera_layout.setSpacing(10)
         gopro_camera_layout.addWidget(self._create_profile_bar(
-            "gopro", self._load_gopro_profile, self._capture_gopro_profile
+            "gopro", self._load_gopro_profile, self._capture_gopro_profile, name_field=self.gopro_model
         ))
 
         gopro_form = QFormLayout()
@@ -710,7 +719,7 @@ class MainWindow(QMainWindow):
         camera_group_layout = QVBoxLayout(camera_group)
         camera_group_layout.setSpacing(10)
         camera_group_layout.addWidget(self._create_profile_bar(
-            "camera", self._load_camera_profile, self._capture_camera_profile
+            "camera", self._load_camera_profile, self._capture_camera_profile, name_field=self.cinema_model
         ))
 
         camera_form = QFormLayout()

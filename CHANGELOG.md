@@ -7,6 +7,13 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.2.1] - 2026-07-14
+
+### Modifié
+- Enregistrement des profils GoPro et Caméra cinéma : le nom du profil est désormais pris
+  directement depuis le champ "Modèle" au clic sur "Enregistrer...", au lieu de redemander
+  un nom via une boîte de dialogue.
+
 ## [1.2.0] - 2026-07-14
 
 ### Ajouté
