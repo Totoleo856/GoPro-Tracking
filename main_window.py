@@ -1,3 +1,8 @@
+import json
+from pathlib import Path
+
+import numpy as np
+
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 from PyQt6.QtGui import QDoubleValidator, QFont, QIntValidator
 from PyQt6.QtWidgets import (
@@ -20,6 +25,16 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+try:
+    import matplotlib
+    matplotlib.use("QtAgg")
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from matplotlib.figure import Figure
+    import mpl_toolkits.mplot3d  # noqa: F401  (registers the 3d projection)
+except ImportError:
+    FigureCanvasQTAgg = None
+    Figure = None
 
 from calibration import Calibration
 from tracking import Tracker
@@ -343,6 +358,89 @@ class MainWindow(QMainWindow):
         progress_bar.setRange(0, 100)
         progress_bar.setValue(0)
         status_label.setText(message)
+
+    # ------------------------------------------------------------------
+    # Aperçu 3D de la trajectoire
+    # ------------------------------------------------------------------
+    def _style_3d_axes(self, ax):
+        background = "#202124"
+        panel = "#26272b"
+        grid_color = (0.20, 0.21, 0.23, 1)
+        text_color = "#c7c9cc"
+
+        self.verification_figure.patch.set_facecolor(background)
+        ax.set_facecolor(background)
+        for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+            axis.pane.set_facecolor(panel)
+            axis.pane.set_edgecolor("#34363b")
+            axis._axinfo["grid"]["color"] = grid_color
+            axis.label.set_color(text_color)
+        ax.tick_params(colors=text_color)
+        ax.title.set_color("#eaecee")
+
+    def _set_axes_equal(self, ax, positions):
+        mins = positions.min(axis=0)
+        maxs = positions.max(axis=0)
+        mins = np.minimum(mins, 0.0)
+        maxs = np.maximum(maxs, 0.0)
+        half_range = max((maxs - mins).max() / 2.0, 0.1)
+        center = (maxs + mins) / 2.0
+        ax.set_xlim(center[0] - half_range, center[0] + half_range)
+        ax.set_ylim(center[1] - half_range, center[1] + half_range)
+        ax.set_zlim(center[2] - half_range, center[2] + half_range)
+        return half_range
+
+    def _decorate_empty_axes(self, ax, message=""):
+        ax.set_xlabel("X (m)")
+        ax.set_ylabel("Y (m)")
+        ax.set_zlabel("Z (m)")
+        ax.set_title("Trajectoire caméra cinéma")
+        if message:
+            ax.text2D(
+                0.5, 0.5, message, transform=ax.transAxes,
+                ha="center", va="center", color="#8a8f98", fontsize=9,
+            )
+
+    def _reset_trajectory_plot(self, message=""):
+        if self.verification_canvas is None:
+            return
+        ax = self.verification_axes
+        ax.clear()
+        self._style_3d_axes(ax)
+        self._decorate_empty_axes(ax, message)
+        self.verification_canvas.draw()
+
+    def _plot_trajectory(self, positions, forwards):
+        if self.verification_canvas is None:
+            return
+        ax = self.verification_axes
+        ax.clear()
+        self._style_3d_axes(ax)
+        self._decorate_empty_axes(ax)
+
+        ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], color="#5b8def", linewidth=2, label="Trajectoire")
+        ax.scatter(*positions[0], color="#4caf50", s=45, label="Départ", depthshade=False)
+        ax.scatter(*positions[-1], color="#e05252", s=45, label="Fin", depthshade=False)
+
+        half_range = self._set_axes_equal(ax, positions)
+
+        step = max(1, len(positions) // 25)
+        indices = np.arange(0, len(positions), step)
+        arrow_length = half_range * 0.15
+        ax.quiver(
+            positions[indices, 0], positions[indices, 1], positions[indices, 2],
+            forwards[indices, 0], forwards[indices, 1], forwards[indices, 2],
+            length=arrow_length, normalize=True, color="#8fb4ec", linewidth=1, arrow_length_ratio=0.35,
+        )
+
+        axis_length = half_range * 0.2
+        ax.quiver(0, 0, 0, 1, 0, 0, length=axis_length, color="#e05252")
+        ax.quiver(0, 0, 0, 0, 1, 0, length=axis_length, color="#4caf50")
+        ax.quiver(0, 0, 0, 0, 0, 1, length=axis_length, color="#5b8def")
+        ax.scatter(0, 0, 0, color="#eaecee", s=35, marker="x", label="Origine (cible Charuco)", depthshade=False)
+
+        ax.legend(facecolor="#26272b", labelcolor="#c7c9cc", edgecolor="#34363b", loc="upper right", fontsize=8)
+        self.verification_canvas.draw()
 
     # ------------------------------------------------------------------
     # Onglet Calibration
@@ -751,7 +849,28 @@ class MainWindow(QMainWindow):
         inner_layout.addStretch()
 
         scroll_area = self.create_scroll_area(inner)
-        content_layout.addWidget(scroll_area)
+        content_layout.addWidget(scroll_area, 0)
+
+        viewer_group = QGroupBox("Aperçu 3D de la trajectoire")
+        viewer_layout = QVBoxLayout(viewer_group)
+        viewer_layout.setContentsMargins(10, 10, 10, 10)
+
+        if FigureCanvasQTAgg is not None:
+            self.verification_figure = Figure(figsize=(5, 4))
+            self.verification_canvas = FigureCanvasQTAgg(self.verification_figure)
+            self.verification_canvas.setMinimumHeight(300)
+            self.verification_axes = self.verification_figure.add_subplot(111, projection="3d")
+            self._reset_trajectory_plot("Chargez un fichier de tracking puis cliquez sur Vérifier / Exporter")
+            viewer_layout.addWidget(self.verification_canvas)
+        else:
+            self.verification_canvas = None
+            placeholder = QLabel(
+                "Visionneuse 3D indisponible : installez matplotlib (pip install matplotlib)."
+            )
+            placeholder.setWordWrap(True)
+            viewer_layout.addWidget(placeholder)
+
+        content_layout.addWidget(viewer_group, 1)
 
         content_layout.addWidget(self.create_separator())
 
@@ -782,5 +901,37 @@ class MainWindow(QMainWindow):
         if not result_path:
             QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner un fichier de résultat de tracking.")
             return
-        self._set_progress(self.verification_progress, self.verification_status, 100, "Fichier chargé")
-        QMessageBox.information(self, "Vérification et Export", f"Fichier de résultat sélectionné :\n{result_path}")
+
+        path = Path(result_path)
+        if path.suffix.lower() != ".json":
+            QMessageBox.warning(
+                self, "Format non supporté",
+                "L'aperçu 3D ne prend en charge que les fichiers .json pour le moment.",
+            )
+            return
+
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            frames = data["frames"]
+            if not frames:
+                raise ValueError("Le fichier de tracking ne contient aucune image.")
+            matrices = np.array([frame["matrix"] for frame in frames], dtype=np.float64)
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur de lecture", f"Impossible de lire le fichier de tracking :\n{exc}")
+            return
+
+        positions = matrices[:, :3, 3]
+        forwards = matrices[:, :3, 2]
+
+        if self.verification_canvas is not None:
+            self._plot_trajectory(positions, forwards)
+            self._set_progress(
+                self.verification_progress, self.verification_status, 100,
+                f"{len(frames)} poses chargées",
+            )
+        else:
+            self._set_progress(
+                self.verification_progress, self.verification_status, 100,
+                f"{len(frames)} poses (installez matplotlib pour l'aperçu 3D)",
+            )
