@@ -127,7 +127,7 @@ class Tracker:
         fps = capture.get(cv2.CAP_PROP_FPS)
         return float(fps if fps > 0.0 else 25.0)
 
-    def run(self):
+    def run(self, progress_callback=None):
         if not Path(self.video).exists():
             raise FileNotFoundError(self.video)
         if cv2 is None or np is None:
@@ -139,13 +139,24 @@ class Tracker:
         if not capture.isOpened():
             raise RuntimeError(f"Impossible d'ouvrir la vidéo : {self.video}")
 
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
         trajectory = Trajectory()
         trajectory.fps = self._frame_rate(capture)
 
+        frame_index = 0
         while True:
             ok, frame = capture.read()
             if not ok:
                 break
+            frame_index += 1
+
+            if progress_callback:
+                if total_frames > 0:
+                    pct = min(99, int(frame_index / total_frames * 100))
+                    progress_callback(pct, f"Frame {frame_index}/{total_frames}")
+                else:
+                    progress_callback(-1, f"Frame {frame_index}")
 
             pose = self._detect_pose_for_frame(frame)
             if pose is not None:
@@ -168,5 +179,8 @@ class Tracker:
         }
         with open(output, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=4, ensure_ascii=False)
+
+        if progress_callback:
+            progress_callback(100, "Tracking terminé")
 
         return str(output)

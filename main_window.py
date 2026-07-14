@@ -1,51 +1,269 @@
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
+from PyQt6.QtGui import QDoubleValidator, QFont, QIntValidator
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
+    QFileDialog,
     QFormLayout,
-    QGridLayout,
+    QFrame,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
-    QSizePolicy,
-    QFrame,
 )
-from PyQt6.QtGui import QDoubleValidator, QIntValidator
 
 from calibration import Calibration
 from tracking import Tracker
+
+
+STYLE_SHEET = """
+QMainWindow, QWidget {
+    background-color: #202124;
+    color: #d7d9db;
+    font-size: 10.5pt;
+}
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QTabWidget::pane {
+    border: 1px solid #34363b;
+    border-radius: 8px;
+    top: -1px;
+    background-color: #202124;
+}
+
+QTabBar::tab {
+    background: transparent;
+    color: #9aa0a6;
+    padding: 10px 20px;
+    margin-right: 2px;
+    border-bottom: 2px solid transparent;
+    font-weight: 600;
+}
+
+QTabBar::tab:selected {
+    color: #eaecee;
+    border-bottom: 2px solid #5b8def;
+}
+
+QTabBar::tab:hover {
+    color: #eaecee;
+}
+
+QGroupBox {
+    background-color: #26272b;
+    border: 1px solid #34363b;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding: 16px 14px 14px 14px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    top: -2px;
+    padding: 0 6px;
+    color: #8fb4ec;
+    background-color: #202124;
+}
+
+QLabel {
+    color: #c7c9cc;
+    font-weight: 400;
+    background: transparent;
+}
+
+QLabel#statusLabel {
+    color: #8a8f98;
+    font-size: 9pt;
+}
+
+QLineEdit, QComboBox {
+    background-color: #2b2d31;
+    border: 1px solid #3d3f45;
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: #eaecee;
+    selection-background-color: #5b8def;
+}
+
+QLineEdit:focus, QComboBox:focus {
+    border: 1px solid #5b8def;
+}
+
+QLineEdit:disabled, QComboBox:disabled {
+    color: #6b6e73;
+    background-color: #232427;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 22px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #2b2d31;
+    color: #eaecee;
+    selection-background-color: #3a5f9f;
+    border: 1px solid #3d3f45;
+    outline: none;
+}
+
+QPushButton {
+    background-color: #2f3136;
+    border: 1px solid #3d3f45;
+    border-radius: 6px;
+    padding: 7px 16px;
+    color: #d7d9db;
+}
+
+QPushButton:hover {
+    background-color: #383a40;
+}
+
+QPushButton:pressed {
+    background-color: #26272b;
+}
+
+QPushButton#primaryButton {
+    background-color: #3f6fb0;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 30px;
+    font-weight: 600;
+    font-size: 11pt;
+}
+
+QPushButton#primaryButton:hover {
+    background-color: #4d7fc4;
+}
+
+QPushButton#primaryButton:pressed {
+    background-color: #345b93;
+}
+
+QPushButton#primaryButton:disabled {
+    background-color: #33475e;
+    color: #7c8791;
+}
+
+QFrame#separator {
+    background-color: #34363b;
+    border: none;
+    max-height: 1px;
+}
+
+QProgressBar {
+    background-color: #2b2d31;
+    border: 1px solid #3d3f45;
+    border-radius: 4px;
+    text-align: center;
+    color: #d7d9db;
+}
+
+QProgressBar::chunk {
+    background-color: #5b8def;
+    border-radius: 4px;
+}
+
+QMessageBox {
+    background-color: #26272b;
+}
+
+QScrollBar:vertical {
+    background: #202124;
+    width: 12px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #45474d;
+    border-radius: 5px;
+    min-height: 24px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #55575d;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+"""
+
+
+class CalibrationWorker(QObject):
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, calibration, output_path):
+        super().__init__()
+        self.calibration = calibration
+        self.output_path = output_path
+
+    def run(self):
+        try:
+            output_path = self.calibration.compute(self.output_path, progress_callback=self.progress.emit)
+        except Exception as exc:
+            self.error.emit(str(exc))
+            return
+        self.finished.emit(output_path)
+
+
+class TrackingWorker(QObject):
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, tracker):
+        super().__init__()
+        self.tracker = tracker
+
+    def run(self):
+        try:
+            output_path = self.tracker.run(progress_callback=self.progress.emit)
+        except Exception as exc:
+            self.error.emit(str(exc))
+            return
+        self.finished.emit(output_path)
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("GoPro Cinema Tracker")
-        self.resize(640, 480)
-        self.setMinimumSize(600, 420)
+        self.resize(780, 780)
+        self.setMinimumSize(700, 620)
 
-        self.button_style = """
-            QPushButton {
-                background-color: #1976D2;
-                color: white;
-                border: none;
-                border-radius: 10px;
-                padding: 10px 22px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #155fa0;
-            }
-            QPushButton:pressed {
-                background-color: #134d83;
-            }
-        """
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(STYLE_SHEET)
+            app.setFont(QFont("Segoe UI", 10))
+
+        self._calibration_thread = None
+        self._calibration_worker = None
+        self._tracking_thread = None
+        self._tracking_worker = None
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -54,6 +272,9 @@ class MainWindow(QMainWindow):
         self.create_tracking_tab()
         self.create_verification_tab()
 
+    # ------------------------------------------------------------------
+    # Helpers communs
+    # ------------------------------------------------------------------
     def browse_file(self, line_edit, filter="All Files (*)"):
         file_path, _ = QFileDialog.getOpenFileName(self, "Choisir un fichier", "", filter)
         if file_path:
@@ -64,6 +285,7 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(widget)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         return scroll
 
     def create_file_row(self, line_edit, button_text="Parcourir", filter="All Files (*)"):
@@ -84,11 +306,47 @@ class MainWindow(QMainWindow):
 
     def create_separator(self):
         separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        separator.setLineWidth(1)
+        separator.setObjectName("separator")
+        separator.setFixedHeight(1)
         return separator
 
+    def create_progress_row(self):
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        progress_bar.setTextVisible(False)
+        progress_bar.setFixedHeight(8)
+
+        status_label = QLabel("")
+        status_label.setObjectName("statusLabel")
+
+        layout.addWidget(progress_bar)
+        layout.addWidget(status_label)
+        return container, progress_bar, status_label
+
+    def _set_progress(self, progress_bar, status_label, pct, message=""):
+        if pct is not None and pct < 0:
+            progress_bar.setRange(0, 0)
+        else:
+            progress_bar.setRange(0, 100)
+            if pct is not None:
+                progress_bar.setValue(pct)
+        if message:
+            status_label.setText(message)
+
+    def _reset_progress(self, progress_bar, status_label, message=""):
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        status_label.setText(message)
+
+    # ------------------------------------------------------------------
+    # Onglet Calibration
+    # ------------------------------------------------------------------
     def create_calibration_tab(self):
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -97,14 +355,11 @@ class MainWindow(QMainWindow):
 
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(10, 10, 10, 10)
-        inner_layout.setSpacing(6)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(6)
+        inner_layout.setContentsMargins(16, 16, 16, 16)
+        inner_layout.setSpacing(14)
 
         self.gopro_model = QLineEdit()
+        self.gopro_model.setPlaceholderText("ex. HERO11 Black")
         self.cinema_calibration_video = QLineEdit()
         self.gopro_calibration_video = QLineEdit()
         self.offset_up = QLineEdit()
@@ -144,97 +399,121 @@ class MainWindow(QMainWindow):
         ):
             edit.setValidator(validator_int)
 
-        self.set_compact_field(self.offset_up, 70)
-        self.set_compact_field(self.offset_forward, 70)
-        self.set_compact_field(self.offset_left, 70)
-        self.set_compact_field(self.focal_length, 70)
-        self.set_compact_field(self.sensor_size, 70)
-        self.set_compact_field(self.resolution_x, 55)
-        self.set_compact_field(self.resolution_y, 55)
-        self.set_compact_field(self.charuco_squares_x, 50)
-        self.set_compact_field(self.charuco_squares_y, 50)
-        self.set_compact_field(self.charuco_square_length, 70)
-        self.set_compact_field(self.charuco_marker_length, 70)
-        self.set_compact_field(self.charuco_dictionary, 130)
+        for widget, width in (
+            (self.offset_up, 70),
+            (self.offset_forward, 70),
+            (self.offset_left, 70),
+            (self.focal_length, 70),
+            (self.sensor_size, 70),
+            (self.resolution_x, 60),
+            (self.resolution_y, 60),
+            (self.charuco_squares_x, 50),
+            (self.charuco_squares_y, 50),
+            (self.charuco_square_length, 70),
+            (self.charuco_marker_length, 70),
+            (self.charuco_dictionary, 140),
+        ):
+            self.set_compact_field(widget, width)
 
         self.gopro_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.cinema_calibration_video.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.gopro_calibration_video.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        # -- Groupe : Rig --
+        rig_group = QGroupBox("Rig")
+        rig_form = QFormLayout(rig_group)
+        rig_form.setHorizontalSpacing(14)
+        rig_form.setVerticalSpacing(10)
+
+        offsets_widget = QWidget()
+        offsets_layout = QHBoxLayout(offsets_widget)
+        offsets_layout.setContentsMargins(0, 0, 0, 0)
+        offsets_layout.setSpacing(6)
+        offsets_layout.addWidget(QLabel("Haut"))
+        offsets_layout.addWidget(self.offset_up)
+        offsets_layout.addWidget(QLabel("Avant"))
+        offsets_layout.addWidget(self.offset_forward)
+        offsets_layout.addWidget(QLabel("Gauche"))
+        offsets_layout.addWidget(self.offset_left)
+        offsets_layout.addStretch()
+
+        rig_form.addRow("Modèle GoPro", self.gopro_model)
+        rig_form.addRow("Offsets (m)", offsets_widget)
+
+        # -- Groupe : Vidéos de calibration --
+        videos_group = QGroupBox("Vidéos de calibration")
+        videos_form = QFormLayout(videos_group)
+        videos_form.setHorizontalSpacing(14)
+        videos_form.setVerticalSpacing(10)
+        videos_form.addRow("Vidéo cinéma + Charuco", self.create_file_row(
+            self.cinema_calibration_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
+        ))
+        videos_form.addRow("Vidéo GoPro + Charuco", self.create_file_row(
+            self.gopro_calibration_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
+        ))
+
+        # -- Groupe : Caméra cinéma --
+        camera_group = QGroupBox("Caméra cinéma")
+        camera_form = QFormLayout(camera_group)
+        camera_form.setHorizontalSpacing(14)
+        camera_form.setVerticalSpacing(10)
+
+        optics_widget = QWidget()
+        optics_layout = QHBoxLayout(optics_widget)
+        optics_layout.setContentsMargins(0, 0, 0, 0)
+        optics_layout.setSpacing(8)
+        optics_layout.addWidget(QLabel("Focale (mm)"))
+        optics_layout.addWidget(self.focal_length)
+        optics_layout.addSpacing(10)
+        optics_layout.addWidget(QLabel("Capteur (mm)"))
+        optics_layout.addWidget(self.sensor_size)
+        optics_layout.addStretch()
 
         resolution_widget = QWidget()
         resolution_layout = QHBoxLayout(resolution_widget)
         resolution_layout.setContentsMargins(0, 0, 0, 0)
         resolution_layout.setSpacing(4)
         resolution_layout.addWidget(self.resolution_x)
-        resolution_layout.addWidget(QLabel("x"))
+        resolution_layout.addWidget(QLabel("×"))
         resolution_layout.addWidget(self.resolution_y)
+        resolution_layout.addStretch()
 
-        offsets_widget = QWidget()
-        offsets_layout = QHBoxLayout(offsets_widget)
-        offsets_layout.setContentsMargins(0, 0, 0, 0)
-        offsets_layout.setSpacing(6)
-        offsets_layout.addWidget(QLabel("U"))
-        offsets_layout.addWidget(self.offset_up)
-        offsets_layout.addWidget(QLabel("F"))
-        offsets_layout.addWidget(self.offset_forward)
-        offsets_layout.addWidget(QLabel("L"))
-        offsets_layout.addWidget(self.offset_left)
+        camera_form.addRow("Optique", optics_widget)
+        camera_form.addRow("Résolution (px)", resolution_widget)
 
-        camera_widget = QWidget()
-        camera_layout = QHBoxLayout(camera_widget)
-        camera_layout.setContentsMargins(0, 0, 0, 0)
-        camera_layout.setSpacing(8)
-        camera_layout.addWidget(QLabel("Focale"))
-        camera_layout.addWidget(self.focal_length)
-        camera_layout.addWidget(QLabel("Capteur"))
-        camera_layout.addWidget(self.sensor_size)
-        camera_layout.addStretch()
+        # -- Groupe : Planche Charuco --
+        board_group = QGroupBox("Planche Charuco")
+        board_form = QFormLayout(board_group)
+        board_form.setHorizontalSpacing(14)
+        board_form.setVerticalSpacing(10)
 
         board_widget = QWidget()
         board_layout = QHBoxLayout(board_widget)
         board_layout.setContentsMargins(0, 0, 0, 0)
         board_layout.setSpacing(8)
         board_layout.addWidget(self.charuco_dictionary)
-        board_layout.addWidget(QLabel("X"))
+        board_layout.addSpacing(6)
+        board_layout.addWidget(QLabel("Cases X"))
         board_layout.addWidget(self.charuco_squares_x)
-        board_layout.addWidget(QLabel("Y"))
+        board_layout.addWidget(QLabel("Cases Y"))
         board_layout.addWidget(self.charuco_squares_y)
+        board_layout.addStretch()
 
         size_widget = QWidget()
         size_layout = QHBoxLayout(size_widget)
         size_layout.setContentsMargins(0, 0, 0, 0)
         size_layout.setSpacing(8)
-        size_layout.addWidget(QLabel("Square"))
+        size_layout.addWidget(QLabel("Case"))
         size_layout.addWidget(self.charuco_square_length)
-        size_layout.addWidget(QLabel("Marker"))
+        size_layout.addWidget(QLabel("Marqueur"))
         size_layout.addWidget(self.charuco_marker_length)
+        size_layout.addStretch()
 
-        grid.addWidget(QLabel("Modèle GoPro"), 0, 0)
-        grid.addWidget(self.gopro_model, 0, 1, 1, 3)
-        grid.addWidget(QLabel("Vidéo cinéma + Charuco"), 1, 0)
-        grid.addWidget(self.create_file_row(
-            self.cinema_calibration_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
-        ), 1, 1, 1, 3)
-        grid.addWidget(QLabel("Vidéo GoPro + Charuco"), 2, 0)
-        grid.addWidget(self.create_file_row(
-            self.gopro_calibration_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
-        ), 2, 1, 1, 3)
-        grid.addWidget(QLabel("Offsets (m)"), 3, 0)
-        grid.addWidget(offsets_widget, 3, 1, 1, 3)
-        grid.addWidget(QLabel("Caméra"), 4, 0)
-        grid.addWidget(camera_widget, 4, 1, 1, 3)
-        grid.addWidget(QLabel("Résolution"), 5, 0)
-        grid.addWidget(resolution_widget, 5, 1, 1, 3)
-        grid.addWidget(QLabel("Board"), 6, 0)
-        grid.addWidget(board_widget, 6, 1, 1, 3)
-        grid.addWidget(QLabel("Tailles (m)"), 7, 0)
-        grid.addWidget(size_widget, 7, 1, 1, 3)
+        board_form.addRow("Dictionnaire", board_widget)
+        board_form.addRow("Tailles (m)", size_widget)
 
-        calibrate_button = QPushButton("CALIBRATE")
-        calibrate_button.setStyleSheet(self.button_style)
-        calibrate_button.clicked.connect(self.run_calibration)
-
-        inner_layout.addLayout(grid)
+        inner_layout.addWidget(rig_group)
+        inner_layout.addWidget(videos_group)
+        inner_layout.addWidget(camera_group)
+        inner_layout.addWidget(board_group)
         inner_layout.addStretch()
 
         scroll_area = self.create_scroll_area(inner)
@@ -242,14 +521,27 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(self.create_separator())
 
+        footer = QWidget()
+        footer_layout = QVBoxLayout(footer)
+        footer_layout.setContentsMargins(16, 12, 16, 16)
+        footer_layout.setSpacing(10)
+
+        progress_container, self.calibration_progress, self.calibration_status = self.create_progress_row()
+        footer_layout.addWidget(progress_container)
+
+        self.calibrate_button = QPushButton("LANCER LA CALIBRATION")
+        self.calibrate_button.setObjectName("primaryButton")
+        self.calibrate_button.clicked.connect(self.run_calibration)
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        button_layout.addWidget(calibrate_button)
+        button_layout.addWidget(self.calibrate_button)
         button_layout.addStretch()
-        button_layout.setContentsMargins(10, 10, 10, 10)
-        content_layout.addLayout(button_layout)
+        footer_layout.addLayout(button_layout)
 
-        self.tabs.addTab(content, "Calibration")
+        content_layout.addWidget(footer)
+
+        self.tabs.addTab(content, "1 · Calibration")
 
     def run_calibration(self):
         try:
@@ -290,14 +582,39 @@ class MainWindow(QMainWindow):
         if not output_path:
             return
 
-        try:
-            output_path = calibration.compute(output_path)
-        except Exception as exc:
-            QMessageBox.critical(self, "Erreur de calibration", str(exc))
-            return
+        self.calibrate_button.setEnabled(False)
+        self._set_progress(self.calibration_progress, self.calibration_status, 0, "Démarrage de la calibration...")
 
+        self._calibration_thread = QThread(self)
+        self._calibration_worker = CalibrationWorker(calibration, output_path)
+        self._calibration_worker.moveToThread(self._calibration_thread)
+
+        self._calibration_thread.started.connect(self._calibration_worker.run)
+        self._calibration_worker.progress.connect(self._on_calibration_progress)
+        self._calibration_worker.finished.connect(self._on_calibration_finished)
+        self._calibration_worker.error.connect(self._on_calibration_error)
+        self._calibration_worker.finished.connect(self._calibration_thread.quit)
+        self._calibration_worker.error.connect(self._calibration_thread.quit)
+        self._calibration_thread.finished.connect(self._calibration_worker.deleteLater)
+
+        self._calibration_thread.start()
+
+    def _on_calibration_progress(self, pct, message):
+        self._set_progress(self.calibration_progress, self.calibration_status, pct, message)
+
+    def _on_calibration_finished(self, output_path):
+        self.calibrate_button.setEnabled(True)
+        self._set_progress(self.calibration_progress, self.calibration_status, 100, "Calibration terminée")
         QMessageBox.information(self, "Calibration terminée", f"Calibration générée :\n{output_path}")
 
+    def _on_calibration_error(self, message):
+        self.calibrate_button.setEnabled(True)
+        self._reset_progress(self.calibration_progress, self.calibration_status, "Échec de la calibration")
+        QMessageBox.critical(self, "Erreur de calibration", message)
+
+    # ------------------------------------------------------------------
+    # Onglet Tracking
+    # ------------------------------------------------------------------
     def create_tracking_tab(self):
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -306,14 +623,15 @@ class MainWindow(QMainWindow):
 
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(10, 10, 10, 10)
-        inner_layout.setSpacing(10)
+        inner_layout.setContentsMargins(16, 16, 16, 16)
+        inner_layout.setSpacing(14)
 
-        form = QFormLayout()
+        inputs_group = QGroupBox("Fichiers d'entrée")
+        form = QFormLayout(inputs_group)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         form.setHorizontalSpacing(14)
-        form.setVerticalSpacing(8)
+        form.setVerticalSpacing(10)
 
         self.capture_video = QLineEdit()
         self.calibration_file = QLineEdit()
@@ -327,7 +645,7 @@ class MainWindow(QMainWindow):
             self.calibration_file, "Parcourir", "JSON (*.json);;Tous les fichiers (*)"
         ))
 
-        inner_layout.addLayout(form)
+        inner_layout.addWidget(inputs_group)
         inner_layout.addStretch()
 
         scroll_area = self.create_scroll_area(inner)
@@ -335,18 +653,27 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(self.create_separator())
 
-        tracking_button = QPushButton("TRACKING")
-        tracking_button.setStyleSheet(self.button_style)
-        tracking_button.clicked.connect(self.run_tracking)
+        footer = QWidget()
+        footer_layout = QVBoxLayout(footer)
+        footer_layout.setContentsMargins(16, 12, 16, 16)
+        footer_layout.setSpacing(10)
+
+        progress_container, self.tracking_progress, self.tracking_status = self.create_progress_row()
+        footer_layout.addWidget(progress_container)
+
+        self.tracking_button = QPushButton("LANCER LE TRACKING")
+        self.tracking_button.setObjectName("primaryButton")
+        self.tracking_button.clicked.connect(self.run_tracking)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        button_layout.addWidget(tracking_button)
+        button_layout.addWidget(self.tracking_button)
         button_layout.addStretch()
-        button_layout.setContentsMargins(10, 10, 10, 10)
-        content_layout.addLayout(button_layout)
+        footer_layout.addLayout(button_layout)
 
-        self.tabs.addTab(content, "Tracking")
+        content_layout.addWidget(footer)
+
+        self.tabs.addTab(content, "2 · Tracking")
 
     def run_tracking(self):
         capture_path = self.capture_video.text()
@@ -358,13 +685,43 @@ class MainWindow(QMainWindow):
 
         try:
             tracker = Tracker(capture_path, calibration_path)
-            output_path = tracker.run()
         except Exception as exc:
             QMessageBox.critical(self, "Erreur de tracking", str(exc))
             return
 
+        self.tracking_button.setEnabled(False)
+        self._set_progress(self.tracking_progress, self.tracking_status, 0, "Démarrage du tracking...")
+
+        self._tracking_thread = QThread(self)
+        self._tracking_worker = TrackingWorker(tracker)
+        self._tracking_worker.moveToThread(self._tracking_thread)
+
+        self._tracking_thread.started.connect(self._tracking_worker.run)
+        self._tracking_worker.progress.connect(self._on_tracking_progress)
+        self._tracking_worker.finished.connect(self._on_tracking_finished)
+        self._tracking_worker.error.connect(self._on_tracking_error)
+        self._tracking_worker.finished.connect(self._tracking_thread.quit)
+        self._tracking_worker.error.connect(self._tracking_thread.quit)
+        self._tracking_thread.finished.connect(self._tracking_worker.deleteLater)
+
+        self._tracking_thread.start()
+
+    def _on_tracking_progress(self, pct, message):
+        self._set_progress(self.tracking_progress, self.tracking_status, pct, message)
+
+    def _on_tracking_finished(self, output_path):
+        self.tracking_button.setEnabled(True)
+        self._set_progress(self.tracking_progress, self.tracking_status, 100, "Tracking terminé")
         QMessageBox.information(self, "Tracking terminé", f"Fichier tracking généré :\n{output_path}")
 
+    def _on_tracking_error(self, message):
+        self.tracking_button.setEnabled(True)
+        self._reset_progress(self.tracking_progress, self.tracking_status, "Échec du tracking")
+        QMessageBox.critical(self, "Erreur de tracking", message)
+
+    # ------------------------------------------------------------------
+    # Onglet Vérification
+    # ------------------------------------------------------------------
     def create_verification_tab(self):
         content = QWidget()
         content_layout = QVBoxLayout(content)
@@ -373,14 +730,15 @@ class MainWindow(QMainWindow):
 
         inner = QWidget()
         inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(10, 10, 10, 10)
-        inner_layout.setSpacing(10)
+        inner_layout.setContentsMargins(16, 16, 16, 16)
+        inner_layout.setSpacing(14)
 
-        form = QFormLayout()
+        result_group = QGroupBox("Résultat de tracking")
+        form = QFormLayout(result_group)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         form.setHorizontalSpacing(14)
-        form.setVerticalSpacing(8)
+        form.setVerticalSpacing(10)
 
         self.tracking_result_file = QLineEdit()
         self.tracking_result_file.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -389,7 +747,7 @@ class MainWindow(QMainWindow):
             self.tracking_result_file, "Parcourir", "Résultats tracking (*.json *.csv);;Tous les fichiers (*)"
         ))
 
-        inner_layout.addLayout(form)
+        inner_layout.addWidget(result_group)
         inner_layout.addStretch()
 
         scroll_area = self.create_scroll_area(inner)
@@ -397,23 +755,32 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(self.create_separator())
 
+        footer = QWidget()
+        footer_layout = QVBoxLayout(footer)
+        footer_layout.setContentsMargins(16, 12, 16, 16)
+        footer_layout.setSpacing(10)
+
+        progress_container, self.verification_progress, self.verification_status = self.create_progress_row()
+        footer_layout.addWidget(progress_container)
+
         verify_button = QPushButton("VÉRIFIER / EXPORTER")
-        verify_button.setStyleSheet(self.button_style)
+        verify_button.setObjectName("primaryButton")
         verify_button.clicked.connect(self.run_verification)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         button_layout.addWidget(verify_button)
         button_layout.addStretch()
-        button_layout.setContentsMargins(10, 10, 10, 10)
-        content_layout.addLayout(button_layout)
+        footer_layout.addLayout(button_layout)
 
-        self.tabs.addTab(content, "Vérification")
+        content_layout.addWidget(footer)
+
+        self.tabs.addTab(content, "3 · Vérification")
 
     def run_verification(self):
         result_path = self.tracking_result_file.text()
         if not result_path:
             QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner un fichier de résultat de tracking.")
             return
+        self._set_progress(self.verification_progress, self.verification_status, 100, "Fichier chargé")
         QMessageBox.information(self, "Vérification et Export", f"Fichier de résultat sélectionné :\n{result_path}")
-

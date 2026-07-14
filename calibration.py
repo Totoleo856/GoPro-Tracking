@@ -113,7 +113,7 @@ class Calibration:
             z = 0.0
         return {"x": float(math.degrees(x)), "y": float(math.degrees(y)), "z": float(math.degrees(z))}
 
-    def _detect_charuco_pose(self, video_path):
+    def _detect_charuco_pose(self, video_path, progress_callback=None, progress_range=(0, 100)):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
                 "OpenCV contrib est requis pour Charuco : pip install opencv-contrib-python"
@@ -128,10 +128,16 @@ class Calibration:
         camera_matrix = self._camera_matrix()
         dist_coeffs = np.zeros((5, 1), dtype=np.float64)
 
-        for _ in range(60):
+        max_frames = 60
+        start, end = progress_range
+        for frame_index in range(max_frames):
             ok, frame = capture.read()
             if not ok:
                 break
+            if progress_callback:
+                pct = start + (end - start) * (frame_index + 1) / max_frames
+                progress_callback(int(pct), f"Analyse de la vidéo ({frame_index + 1}/{max_frames})")
+
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             charuco_corners, charuco_ids, _, _ = detector.detectBoard(gray)
             if charuco_ids is None or len(charuco_ids) < 4:
@@ -146,12 +152,14 @@ class Calibration:
                 rotation_matrix, _ = cv2.Rodrigues(rvec)
                 translation = tvec.reshape(3)
                 capture.release()
+                if progress_callback:
+                    progress_callback(int(end), "Pose Charuco détectée")
                 return Pose(rotation=rotation_matrix, translation=translation)
 
         capture.release()
         return None
 
-    def compute(self, output_path: str):
+    def compute(self, output_path: str, progress_callback=None):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
                 "OpenCV contrib est requis pour Charuco : pip install opencv-contrib-python"
@@ -162,14 +170,19 @@ class Calibration:
         if not Path(self.cinema_video).exists():
             raise FileNotFoundError(f"Vidéo caméra cinéma introuvable : {self.cinema_video}")
 
+        if progress_callback:
+            progress_callback(0, "Préparation des caméras...")
         gopro_camera = self._create_camera("GoPro")
         cinema_camera = self._create_camera("Cinema")
-        gopro_pose = self._detect_charuco_pose(self.gopro_video)
-        cinema_pose = self._detect_charuco_pose(self.cinema_video)
+
+        gopro_pose = self._detect_charuco_pose(self.gopro_video, progress_callback, (5, 50))
+        cinema_pose = self._detect_charuco_pose(self.cinema_video, progress_callback, (50, 95))
 
         if gopro_pose is None or cinema_pose is None:
             raise RuntimeError("Impossible d'extraire la pose Charuco sur l'une des vidéos.")
 
+        if progress_callback:
+            progress_callback(95, "Calcul de la transformation du rig...")
         rig_pose = Pose.from_matrix(cinema_pose.matrix @ gopro_pose.inverse().matrix)
 
         result = {
@@ -200,5 +213,8 @@ class Calibration:
         output.parent.mkdir(parents=True, exist_ok=True)
         with open(output, "w", encoding="utf-8") as file:
             json.dump(result, file, indent=4, ensure_ascii=False)
+
+        if progress_callback:
+            progress_callback(100, "Calibration terminée")
 
         return str(output)
