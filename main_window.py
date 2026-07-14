@@ -521,6 +521,8 @@ class MainWindow(QMainWindow):
         inner_layout.setContentsMargins(16, 16, 16, 16)
         inner_layout.setSpacing(14)
 
+        self.project_name = QLineEdit()
+        self.project_name.setPlaceholderText("ex. Tournage Client X — Scène 3")
         self.gopro_model = QLineEdit()
         self.gopro_model.setPlaceholderText("ex. HERO11 Black")
         self.cinema_calibration_video = QLineEdit()
@@ -593,6 +595,7 @@ class MainWindow(QMainWindow):
         ):
             self.set_compact_field(widget, width)
 
+        self.project_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.gopro_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         # -- Groupe : Rig --
@@ -613,7 +616,7 @@ class MainWindow(QMainWindow):
         offsets_layout.addWidget(self.offset_left)
         offsets_layout.addStretch()
 
-        rig_form.addRow("Modèle GoPro", self.gopro_model)
+        rig_form.addRow("Nom du projet", self.project_name)
         rig_form.addRow("Offsets (m)", offsets_widget)
 
         # -- Groupe : Vidéos de calibration --
@@ -660,6 +663,7 @@ class MainWindow(QMainWindow):
         gopro_resolution_layout.addWidget(self.gopro_resolution_y)
         gopro_resolution_layout.addStretch()
 
+        gopro_form.addRow("Modèle", self.gopro_model)
         gopro_form.addRow("Optique", gopro_optics_widget)
         gopro_form.addRow("Résolution (px)", gopro_resolution_widget)
         gopro_camera_layout.addLayout(gopro_form)
@@ -863,6 +867,7 @@ class MainWindow(QMainWindow):
             gopro_camera=gopro_camera,
             cinema_camera=cinema_camera,
             charuco_board=board,
+            project_name=self.project_name.text(),
         )
 
         output_path, _ = QFileDialog.getSaveFileName(
