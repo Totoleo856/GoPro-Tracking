@@ -7,6 +7,12 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.0.1] - 2026-07-14
+
+### Corrigé
+- Fichier `LICENSE` (Apache 2.0) : titulaire du copyright renseigné (Léo Péchon, 2026),
+  le champ était resté en placeholder.
+
 ## [1.0.0] - 2026-07-14
 
 Première version stable de l'application.
