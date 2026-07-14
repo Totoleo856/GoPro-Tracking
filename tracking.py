@@ -149,19 +149,20 @@ class Tracker:
             ok, frame = capture.read()
             if not ok:
                 break
-            frame_index += 1
 
             if progress_callback:
                 if total_frames > 0:
-                    pct = min(99, int(frame_index / total_frames * 100))
-                    progress_callback(pct, f"Frame {frame_index}/{total_frames}")
+                    pct = min(99, int((frame_index + 1) / total_frames * 100))
+                    progress_callback(pct, f"Frame {frame_index + 1}/{total_frames}")
                 else:
-                    progress_callback(-1, f"Frame {frame_index}")
+                    progress_callback(-1, f"Frame {frame_index + 1}")
 
             pose = self._detect_pose_for_frame(frame)
             if pose is not None:
                 cinema_pose = self.rig.transform_tracker_to_cinema(pose)
-                trajectory.add_pose(cinema_pose)
+                trajectory.add_pose(cinema_pose, frame_index)
+
+            frame_index += 1
 
         capture.release()
 
@@ -174,7 +175,7 @@ class Tracker:
             "fps": trajectory.fps,
             "frames": [
                 {"index": idx, "matrix": pose.matrix.tolist()}
-                for idx, pose in enumerate(trajectory.poses)
+                for idx, pose in zip(trajectory.frame_indices, trajectory.poses)
             ],
         }
         with open(output, "w", encoding="utf-8") as f:

@@ -39,6 +39,7 @@ except ImportError:
 
 from calibration import Calibration
 from tracking import Tracker
+from sfm_tracking import SfmTracker
 
 
 STYLE_SHEET = """
@@ -748,7 +749,19 @@ class MainWindow(QMainWindow):
             self.calibration_file, "Parcourir", "JSON (*.json);;Tous les fichiers (*)"
         ))
 
+        mode_group = QGroupBox("Mode de tracking")
+        mode_layout = QVBoxLayout(mode_group)
+        self.tracking_mode = QComboBox()
+        self.tracking_mode.addItem(
+            "SfM (COLMAP) — cible visible au début seulement", userData="sfm"
+        )
+        self.tracking_mode.addItem(
+            "Charuco continu — cible visible en permanence", userData="charuco"
+        )
+        mode_layout.addWidget(self.tracking_mode)
+
         inner_layout.addWidget(inputs_group)
+        inner_layout.addWidget(mode_group)
         inner_layout.addStretch()
 
         scroll_area = self.create_scroll_area(inner)
@@ -786,8 +799,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner la vidéo GoPro et le fichier de calibration.")
             return
 
+        mode = self.tracking_mode.currentData()
+        tracker_class = SfmTracker if mode == "sfm" else Tracker
+
         try:
-            tracker = Tracker(capture_path, calibration_path)
+            tracker = tracker_class(capture_path, calibration_path)
         except Exception as exc:
             QMessageBox.critical(self, "Erreur de tracking", str(exc))
             return
