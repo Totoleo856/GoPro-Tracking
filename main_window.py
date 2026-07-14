@@ -42,6 +42,7 @@ from calibration import Calibration
 from tracking import Tracker
 from sfm_tracking import SfmTracker
 from profiles import list_profiles, load_profile, save_profile
+from version import __version__
 
 
 STYLE_SHEET = """
@@ -270,7 +271,7 @@ class TrackingWorker(QObject):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GoPro Cinema Tracker")
+        self.setWindowTitle(f"GoPro Cinema Tracker v{__version__}")
         self.resize(780, 780)
         self.setMinimumSize(700, 620)
 

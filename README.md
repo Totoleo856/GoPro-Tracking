@@ -1,5 +1,7 @@
 # GoPro Cinema Camera Tracker
 
+Version actuelle : **1.0.0** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
+
 ## Vision du projet
 
 Ce projet vise à développer un outil Python de camera tracking destiné aux workflows VFX cinéma.
