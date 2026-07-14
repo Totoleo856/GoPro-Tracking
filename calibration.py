@@ -5,10 +5,9 @@ from pathlib import Path
 try:
     import cv2
     import numpy as np
-except ImportError as exc:
+except ImportError:
     cv2 = None
     np = None
-    _cv2_import_error = exc
 
 from camera import Camera
 from pose import Pose
@@ -93,10 +92,9 @@ class Calibration:
         dictionary_name = self.charuco_board["dictionary"]
         if not hasattr(cv2.aruco, dictionary_name):
             raise ValueError(f"ArUco dictionary inconnu : {dictionary_name}")
-        aruco_dict = cv2.aruco.Dictionary_get(getattr(cv2.aruco, dictionary_name))
-        return cv2.aruco.CharucoBoard_create(
-            int(self.charuco_board["squares_x"]),
-            int(self.charuco_board["squares_y"]),
+        aruco_dict = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary_name))
+        return cv2.aruco.CharucoBoard(
+            (int(self.charuco_board["squares_x"]), int(self.charuco_board["squares_y"])),
             float(self.charuco_board["square_length"]),
             float(self.charuco_board["marker_length"]),
             aruco_dict,
@@ -126,7 +124,7 @@ class Calibration:
             raise FileNotFoundError(f"Impossible d'ouvrir la vidéo : {video_path}")
 
         board = self._create_charuco_board()
-        params = cv2.aruco.DetectorParameters_create()
+        detector = cv2.aruco.CharucoDetector(board)
         camera_matrix = self._camera_matrix()
         dist_coeffs = np.zeros((5, 1), dtype=np.float64)
 
@@ -135,18 +133,14 @@ class Calibration:
             if not ok:
                 break
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            corners, ids, _ = cv2.aruco.detectMarkers(gray, board.dictionary, parameters=params)
-            if ids is None or len(ids) == 0:
-                continue
-
-            _, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-                corners, ids, gray, board
-            )
+            charuco_corners, charuco_ids, _, _ = detector.detectBoard(gray)
             if charuco_ids is None or len(charuco_ids) < 4:
                 continue
 
+            rvec = np.zeros((3, 1), dtype=np.float64)
+            tvec = np.zeros((3, 1), dtype=np.float64)
             retval, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
-                charuco_corners, charuco_ids, board, camera_matrix, dist_coeffs
+                charuco_corners, charuco_ids, board, camera_matrix, dist_coeffs, rvec, tvec
             )
             if retval:
                 rotation_matrix, _ = cv2.Rodrigues(rvec)

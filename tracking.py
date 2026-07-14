@@ -4,10 +4,9 @@ from pathlib import Path
 try:
     import cv2
     import numpy as np
-except ImportError as exc:
+except ImportError:
     cv2 = None
     np = None
-    _cv2_import_error = exc
 
 from camera import Camera
 from pose import Pose
@@ -17,10 +16,15 @@ from trajectory import Trajectory
 
 class Tracker:
     def __init__(self, video, calibration_file):
+        if cv2 is None or np is None:
+            raise ImportError(
+                "OpenCV contrib est requis pour le tracking : pip install opencv-contrib-python"
+            )
         self.video = video
         self.calibration = self._load_calibration(calibration_file)
         self.rig = self._build_rig(self.calibration)
         self.charuco_board = self._build_charuco_board(self.calibration["charuco_board"])
+        self.charuco_detector = cv2.aruco.CharucoDetector(self.charuco_board)
 
     def _load_calibration(self, path):
         path = Path(path)
@@ -69,10 +73,9 @@ class Tracker:
         dictionary_name = board_data["dictionary"]
         if not hasattr(cv2.aruco, dictionary_name):
             raise ValueError(f"ArUco dictionary inconnu : {dictionary_name}")
-        aruco_dict = cv2.aruco.Dictionary_get(getattr(cv2.aruco, dictionary_name))
-        return cv2.aruco.CharucoBoard_create(
-            int(board_data["squares_x"]),
-            int(board_data["squares_y"]),
+        aruco_dict = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary_name))
+        return cv2.aruco.CharucoBoard(
+            (int(board_data["squares_x"]), int(board_data["squares_y"])),
             float(board_data["square_length"]),
             float(board_data["marker_length"]),
             aruco_dict,
@@ -95,28 +98,23 @@ class Tracker:
             )
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        params = cv2.aruco.DetectorParameters_create()
-        corners, ids, _ = cv2.aruco.detectMarkers(
-            gray, self.charuco_board.dictionary, parameters=params
-        )
-        if ids is None or len(ids) == 0:
-            return None
-
-        _, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-            corners, ids, gray, self.charuco_board
-        )
+        charuco_corners, charuco_ids, _, _ = self.charuco_detector.detectBoard(gray)
         if charuco_ids is None or len(charuco_ids) < 4:
             return None
 
         camera_matrix = self._camera_matrix_from_camera(self.rig.tracker_camera)
         dist_coeffs = np.asarray(self.rig.tracker_camera.distortion, dtype=np.float64).reshape(-1, 1)
 
+        rvec = np.zeros((3, 1), dtype=np.float64)
+        tvec = np.zeros((3, 1), dtype=np.float64)
         retval, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
             charuco_corners,
             charuco_ids,
             self.charuco_board,
             camera_matrix,
             dist_coeffs,
+            rvec,
+            tvec,
         )
         if not retval:
             return None

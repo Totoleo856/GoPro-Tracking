@@ -1,6 +1,5 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QApplication,
     QComboBox,
     QFormLayout,
     QGridLayout,
@@ -417,12 +416,4 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner un fichier de résultat de tracking.")
             return
         QMessageBox.information(self, "Vérification et Export", f"Fichier de résultat sélectionné :\n{result_path}")
-
-
-if __name__ == "__main__":
-    import sys
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
 
