@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -290,10 +291,12 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Helpers communs
     # ------------------------------------------------------------------
-    def browse_file(self, line_edit, filter="All Files (*)"):
+    def browse_file(self, line_edit, filter="All Files (*)", on_selected=None):
         file_path, _ = QFileDialog.getOpenFileName(self, "Choisir un fichier", "", filter)
         if file_path:
             line_edit.setText(file_path)
+            if on_selected:
+                on_selected(file_path)
 
     def create_scroll_area(self, widget: QWidget) -> QScrollArea:
         scroll = QScrollArea()
@@ -303,7 +306,7 @@ class MainWindow(QMainWindow):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         return scroll
 
-    def create_file_row(self, line_edit, button_text="Parcourir", filter="All Files (*)"):
+    def create_file_row(self, line_edit, button_text="Parcourir", filter="All Files (*)", on_selected=None):
         line_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
@@ -311,8 +314,10 @@ class MainWindow(QMainWindow):
         row_layout.setSpacing(6)
         row_layout.addWidget(line_edit)
         browse_button = QPushButton(button_text)
-        browse_button.clicked.connect(lambda: self.browse_file(line_edit, filter))
+        browse_button.clicked.connect(lambda: self.browse_file(line_edit, filter, on_selected))
         row_layout.addWidget(browse_button)
+        if on_selected:
+            line_edit.editingFinished.connect(lambda: on_selected(line_edit.text()))
         return row_widget
 
     def set_compact_field(self, widget, width=90):
@@ -842,7 +847,8 @@ class MainWindow(QMainWindow):
         self.tracking_result_file.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         form.addRow("Fichier résultat", self.create_file_row(
-            self.tracking_result_file, "Parcourir", "Résultats tracking (*.json *.csv);;Tous les fichiers (*)"
+            self.tracking_result_file, "Parcourir", "Résultats tracking (*.json *.csv);;Tous les fichiers (*)",
+            on_selected=self._auto_preview_tracking,
         ))
 
         inner_layout.addWidget(result_group)
@@ -860,7 +866,7 @@ class MainWindow(QMainWindow):
             self.verification_canvas = FigureCanvasQTAgg(self.verification_figure)
             self.verification_canvas.setMinimumHeight(300)
             self.verification_axes = self.verification_figure.add_subplot(111, projection="3d")
-            self._reset_trajectory_plot("Chargez un fichier de tracking puis cliquez sur Vérifier / Exporter")
+            self._reset_trajectory_plot("Sélectionnez un fichier de tracking pour afficher la trajectoire")
             viewer_layout.addWidget(self.verification_canvas)
         else:
             self.verification_canvas = None
@@ -882,13 +888,13 @@ class MainWindow(QMainWindow):
         progress_container, self.verification_progress, self.verification_status = self.create_progress_row()
         footer_layout.addWidget(progress_container)
 
-        verify_button = QPushButton("VÉRIFIER / EXPORTER")
-        verify_button.setObjectName("primaryButton")
-        verify_button.clicked.connect(self.run_verification)
+        self.export_button = QPushButton("EXPORT")
+        self.export_button.setObjectName("primaryButton")
+        self.export_button.clicked.connect(self.run_export)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        button_layout.addWidget(verify_button)
+        button_layout.addWidget(self.export_button)
         button_layout.addStretch()
         footer_layout.addLayout(button_layout)
 
@@ -896,42 +902,66 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(content, "3 · Vérification")
 
-    def run_verification(self):
-        result_path = self.tracking_result_file.text()
-        if not result_path:
-            QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner un fichier de résultat de tracking.")
-            return
-
-        path = Path(result_path)
+    def _load_tracking_positions(self, path):
+        path = Path(path)
         if path.suffix.lower() != ".json":
-            QMessageBox.warning(
-                self, "Format non supporté",
-                "L'aperçu 3D ne prend en charge que les fichiers .json pour le moment.",
-            )
-            return
+            raise ValueError("L'aperçu 3D ne prend en charge que les fichiers .json pour le moment.")
+
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        frames = data["frames"]
+        if not frames:
+            raise ValueError("Le fichier de tracking ne contient aucune image.")
+
+        matrices = np.array([frame["matrix"] for frame in frames], dtype=np.float64)
+        return matrices[:, :3, 3], matrices[:, :3, 2], len(frames)
+
+    def _preview_tracking_file(self, path, notify_errors=True):
+        if not path:
+            return False
 
         try:
-            with open(path, "r", encoding="utf-8") as file:
-                data = json.load(file)
-            frames = data["frames"]
-            if not frames:
-                raise ValueError("Le fichier de tracking ne contient aucune image.")
-            matrices = np.array([frame["matrix"] for frame in frames], dtype=np.float64)
+            positions, forwards, frame_count = self._load_tracking_positions(path)
         except Exception as exc:
-            QMessageBox.critical(self, "Erreur de lecture", f"Impossible de lire le fichier de tracking :\n{exc}")
-            return
-
-        positions = matrices[:, :3, 3]
-        forwards = matrices[:, :3, 2]
+            if notify_errors:
+                QMessageBox.critical(self, "Erreur de lecture", f"Impossible de lire le fichier de tracking :\n{exc}")
+            return False
 
         if self.verification_canvas is not None:
             self._plot_trajectory(positions, forwards)
             self._set_progress(
                 self.verification_progress, self.verification_status, 100,
-                f"{len(frames)} poses chargées",
+                f"{frame_count} poses chargées",
             )
         else:
             self._set_progress(
                 self.verification_progress, self.verification_status, 100,
-                f"{len(frames)} poses (installez matplotlib pour l'aperçu 3D)",
+                f"{frame_count} poses (installez matplotlib pour l'aperçu 3D)",
             )
+        return True
+
+    def _auto_preview_tracking(self, path):
+        self._preview_tracking_file(path, notify_errors=True)
+
+    def run_export(self):
+        result_path = self.tracking_result_file.text()
+        if not result_path:
+            QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner un fichier de résultat de tracking.")
+            return
+
+        if not self._preview_tracking_file(result_path, notify_errors=True):
+            return
+
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "Exporter le fichier de tracking", Path(result_path).name, "JSON (*.json)",
+        )
+        if not output_path:
+            return
+
+        try:
+            shutil.copyfile(result_path, output_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur d'export", str(exc))
+            return
+
+        QMessageBox.information(self, "Export terminé", f"Fichier exporté :\n{output_path}")
