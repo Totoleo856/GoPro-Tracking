@@ -536,6 +536,8 @@ class MainWindow(QMainWindow):
         self.gopro_resolution_x = QLineEdit()
         self.gopro_resolution_y = QLineEdit()
 
+        self.cinema_model = QLineEdit()
+        self.cinema_model.setPlaceholderText("ex. Alexa Mini")
         self.cinema_focal_length = QLineEdit()
         self.cinema_sensor_size = QLineEdit()
         self.cinema_resolution_x = QLineEdit()
@@ -597,6 +599,7 @@ class MainWindow(QMainWindow):
 
         self.project_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.gopro_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.cinema_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         # -- Groupe : Rig --
         rig_group = QGroupBox("Rig")
@@ -700,6 +703,7 @@ class MainWindow(QMainWindow):
         resolution_layout.addWidget(self.cinema_resolution_y)
         resolution_layout.addStretch()
 
+        camera_form.addRow("Modèle", self.cinema_model)
         camera_form.addRow("Optique", optics_widget)
         camera_form.addRow("Résolution (px)", resolution_widget)
         camera_group_layout.addLayout(camera_form)
@@ -797,6 +801,8 @@ class MainWindow(QMainWindow):
         }
 
     def _load_camera_profile(self, data):
+        if "model" in data:
+            self.cinema_model.setText(str(data["model"]))
         if "sensor_width" in data:
             self.cinema_sensor_size.setText(str(data["sensor_width"]))
         resolution = data.get("resolution")
@@ -806,6 +812,7 @@ class MainWindow(QMainWindow):
 
     def _capture_camera_profile(self):
         return {
+            "model": self.cinema_model.text(),
             "sensor_width": float(self.cinema_sensor_size.text()),
             "resolution": [int(self.cinema_resolution_x.text()), int(self.cinema_resolution_y.text())],
         }
@@ -861,6 +868,7 @@ class MainWindow(QMainWindow):
 
         calibration = Calibration(
             gopro_model=self.gopro_model.text(),
+            cinema_model=self.cinema_model.text(),
             cinema_video=self.cinema_calibration_video.text(),
             gopro_video=self.gopro_calibration_video.text(),
             offset=offset,

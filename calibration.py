@@ -16,9 +16,10 @@ from pose import Pose
 class Calibration:
     def __init__(
         self, gopro_model, cinema_video, gopro_video, offset, gopro_camera, cinema_camera,
-        charuco_board=None, project_name="",
+        charuco_board=None, project_name="", cinema_model="",
     ):
         self.gopro_model = gopro_model
+        self.cinema_model = cinema_model
         self.cinema_video = cinema_video
         self.gopro_video = gopro_video
         self.offset = offset
@@ -177,7 +178,7 @@ class Calibration:
         if progress_callback:
             progress_callback(0, "Préparation des caméras...")
         gopro_camera = self._create_camera_from_params("GoPro", self.gopro_model, self.gopro_camera)
-        cinema_camera = self._create_camera_from_params("Cinema", "Cinema", self.cinema_camera)
+        cinema_camera = self._create_camera_from_params("Cinema", self.cinema_model, self.cinema_camera)
 
         gopro_matrix = self._camera_matrix_for(self.gopro_camera)
         cinema_matrix = self._camera_matrix_for(self.cinema_camera)
@@ -211,6 +212,7 @@ class Calibration:
             "metadata": {
                 "project_name": self.project_name,
                 "gopro_model": self.gopro_model,
+                "cinema_model": self.cinema_model,
                 "cinema_video": self.cinema_video,
                 "gopro_video": self.gopro_video,
                 "offset": self.offset,
