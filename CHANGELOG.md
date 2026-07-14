@@ -7,6 +7,16 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.1.0] - 2026-07-14
+
+### Ajouté
+- Champ **Nom du rig** (onglet Calibration, groupe Rig) : pré-remplit le nom de fichier
+  proposé à l'enregistrement de `calibration.json`.
+
+### Modifié
+- Le champ auparavant nommé "Nom du projet" est renommé **Nom du rig** (`rig_name` dans
+  `Calibration` et dans les métadonnées du fichier de calibration exporté).
+
 ## [1.0.0] - 2026-07-14
 
 Première version stable de l'application.

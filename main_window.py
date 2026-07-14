@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -522,8 +523,8 @@ class MainWindow(QMainWindow):
         inner_layout.setContentsMargins(16, 16, 16, 16)
         inner_layout.setSpacing(14)
 
-        self.project_name = QLineEdit()
-        self.project_name.setPlaceholderText("ex. Tournage Client X — Scène 3")
+        self.rig_name = QLineEdit()
+        self.rig_name.setPlaceholderText("ex. Rig Alexa Mini + HERO11")
         self.gopro_model = QLineEdit()
         self.gopro_model.setPlaceholderText("ex. HERO11 Black")
         self.cinema_calibration_video = QLineEdit()
@@ -598,7 +599,7 @@ class MainWindow(QMainWindow):
         ):
             self.set_compact_field(widget, width)
 
-        self.project_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.rig_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.gopro_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.cinema_model.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -620,7 +621,7 @@ class MainWindow(QMainWindow):
         offsets_layout.addWidget(self.offset_left)
         offsets_layout.addStretch()
 
-        rig_form.addRow("Nom du projet", self.project_name)
+        rig_form.addRow("Nom du rig", self.rig_name)
         rig_form.addRow("Offsets (m)", offsets_widget)
 
         # -- Groupe : Vidéos de calibration --
@@ -839,6 +840,9 @@ class MainWindow(QMainWindow):
             "marker_length": float(self.charuco_marker_length.text()),
         }
 
+    def _sanitize_filename(self, name: str) -> str:
+        return re.sub(r'[\\/:*?"<>|]+', "_", name).strip() or "calibration"
+
     def run_calibration(self):
         try:
             offset = {
@@ -876,13 +880,14 @@ class MainWindow(QMainWindow):
             gopro_camera=gopro_camera,
             cinema_camera=cinema_camera,
             charuco_board=board,
-            project_name=self.project_name.text(),
+            rig_name=self.rig_name.text(),
         )
 
+        default_name = f"{self._sanitize_filename(self.rig_name.text())}.json"
         output_path, _ = QFileDialog.getSaveFileName(
             self,
             "Enregistrer le fichier de calibration",
-            "calibration.json",
+            default_name,
             "JSON (*.json)",
         )
         if not output_path:

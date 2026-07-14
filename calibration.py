@@ -16,7 +16,7 @@ from pose import Pose
 class Calibration:
     def __init__(
         self, gopro_model, cinema_video, gopro_video, offset, gopro_camera, cinema_camera,
-        charuco_board=None, project_name="", cinema_model="",
+        charuco_board=None, rig_name="", cinema_model="",
     ):
         self.gopro_model = gopro_model
         self.cinema_model = cinema_model
@@ -25,7 +25,7 @@ class Calibration:
         self.offset = offset
         self.gopro_camera = gopro_camera
         self.cinema_camera = cinema_camera
-        self.project_name = project_name
+        self.rig_name = rig_name
         self.charuco_board = charuco_board or {
             "dictionary": "DICT_6X6_250",
             "squares_x": 5,
@@ -210,7 +210,7 @@ class Calibration:
                 "matrix": rig_pose.matrix.tolist(),
             },
             "metadata": {
-                "project_name": self.project_name,
+                "rig_name": self.rig_name,
                 "gopro_model": self.gopro_model,
                 "cinema_model": self.cinema_model,
                 "cinema_video": self.cinema_video,
