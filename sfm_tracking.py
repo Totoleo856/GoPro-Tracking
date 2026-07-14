@@ -14,7 +14,7 @@ try:
 except ImportError:
     pycolmap = None
 
-from alignment import robust_umeyama_alignment
+from alignment import average_rotations, robust_umeyama_alignment
 from pose import Pose
 from tracking import Tracker
 from trajectory import Trajectory
@@ -176,12 +176,7 @@ class SfmTracker:
             for i in range(len(colmap_rotations))
             if inlier_mask[i]
         ]
-        accumulator = sum(candidates)
-        u, _, vt = np.linalg.svd(accumulator)
-        s = np.eye(3)
-        if np.linalg.det(u) * np.linalg.det(vt) < 0:
-            s[-1, -1] = -1.0
-        return u @ s @ vt
+        return average_rotations(candidates)
 
     def _align_pose(self, colmap_pose, scale, rotation_align, translation_align):
         cam_to_world = colmap_pose.inverse()
@@ -190,7 +185,7 @@ class SfmTracker:
         new_cam_to_world = Pose(rotation=new_rotation, translation=new_center)
         return new_cam_to_world.inverse()
 
-    def run(self, progress_callback=None):
+    def run(self, progress_callback=None, output_path="data/tracking.json"):
         def report(pct, message):
             if progress_callback:
                 progress_callback(pct, message)
@@ -252,7 +247,7 @@ class SfmTracker:
             raise RuntimeError("Aucune pose n'a pu être calculée pour cette vidéo.")
 
         report(98, "Écriture du fichier de tracking...")
-        output = Path("data/tracking.json")
+        output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         result = {
             "fps": trajectory.fps,

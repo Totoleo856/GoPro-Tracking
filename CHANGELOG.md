@@ -7,6 +7,20 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.2.0] - 2026-07-14
+
+### Ajouté
+- **Mode Tracking à 2 GoPro** (onglet Tracking) : groupe "GoPro 2" facultatif (calibration +
+  vidéo), à cocher pour activer une seconde caméra rigidement montée sur le même rig.
+  - Synchronisation des deux flux par corrélation croisée des pistes audio (clap sonore en
+    début de prise), convertie en décalage entier de frames.
+  - Les deux vidéos sont reconstruites indépendamment (Charuco ou SfM) puis fusionnées image
+    par image (position moyennée, rotation moyennée par SVD) pour réduire le bruit.
+  - La trajectoire fusionnée est rééchantillonnée sur le fps réel de la caméra cinéma
+    (interpolation linéaire + SLERP), au lieu de rester sur la timeline de la GoPro.
+- Champ **FPS** dans les profils GoPro (auto-détecté depuis la vidéo si laissé vide) et
+  Caméra cinéma (manuel, requis pour le rééchantillonnage ci-dessus).
+
 ## [1.1.0] - 2026-07-14
 
 ### Ajouté

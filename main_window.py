@@ -42,6 +42,7 @@ except ImportError:
 from calibration import Calibration
 from tracking import Tracker
 from sfm_tracking import SfmTracker
+from dual_tracking import DualTracker
 from profiles import list_profiles, load_profile, save_profile
 from version import __version__
 
@@ -102,6 +103,23 @@ QGroupBox::title {
     background-color: #202124;
 }
 
+QGroupBox::indicator {
+    width: 15px;
+    height: 15px;
+    border: 1px solid #4a4d54;
+    border-radius: 3px;
+    background-color: #1b1c1f;
+}
+
+QGroupBox::indicator:unchecked:hover {
+    border: 1px solid #5b8def;
+}
+
+QGroupBox::indicator:checked {
+    background-color: #5b8def;
+    border: 1px solid #5b8def;
+}
+
 QLabel {
     color: #c7c9cc;
     font-weight: 400;
@@ -158,6 +176,12 @@ QPushButton:hover {
 
 QPushButton:pressed {
     background-color: #26272b;
+}
+
+QPushButton:disabled {
+    background-color: #232427;
+    border: 1px solid #302f34;
+    color: #5c5e63;
 }
 
 QPushButton#primaryButton {
@@ -537,6 +561,8 @@ class MainWindow(QMainWindow):
         self.gopro_sensor_size = QLineEdit()
         self.gopro_resolution_x = QLineEdit()
         self.gopro_resolution_y = QLineEdit()
+        self.gopro_fps = QLineEdit()
+        self.gopro_fps.setPlaceholderText("auto")
 
         self.cinema_model = QLineEdit()
         self.cinema_model.setPlaceholderText("ex. Alexa Mini")
@@ -544,6 +570,7 @@ class MainWindow(QMainWindow):
         self.cinema_sensor_size = QLineEdit()
         self.cinema_resolution_x = QLineEdit()
         self.cinema_resolution_y = QLineEdit()
+        self.cinema_fps = QLineEdit()
 
         self.charuco_squares_x = QLineEdit("5")
         self.charuco_squares_y = QLineEdit("7")
@@ -563,8 +590,10 @@ class MainWindow(QMainWindow):
             self.offset_left,
             self.gopro_focal_length,
             self.gopro_sensor_size,
+            self.gopro_fps,
             self.cinema_focal_length,
             self.cinema_sensor_size,
+            self.cinema_fps,
             self.charuco_square_length,
             self.charuco_marker_length,
         ):
@@ -587,10 +616,12 @@ class MainWindow(QMainWindow):
             (self.gopro_sensor_size, 70),
             (self.gopro_resolution_x, 60),
             (self.gopro_resolution_y, 60),
+            (self.gopro_fps, 70),
             (self.cinema_focal_length, 70),
             (self.cinema_sensor_size, 70),
             (self.cinema_resolution_x, 60),
             (self.cinema_resolution_y, 60),
+            (self.cinema_fps, 70),
             (self.charuco_squares_x, 50),
             (self.charuco_squares_y, 50),
             (self.charuco_square_length, 70),
@@ -671,6 +702,7 @@ class MainWindow(QMainWindow):
         gopro_form.addRow("Modèle", self.gopro_model)
         gopro_form.addRow("Optique", gopro_optics_widget)
         gopro_form.addRow("Résolution (px)", gopro_resolution_widget)
+        gopro_form.addRow("FPS", self.gopro_fps)
         gopro_camera_layout.addLayout(gopro_form)
 
         # -- Groupe : Profil Caméra cinéma --
@@ -708,6 +740,7 @@ class MainWindow(QMainWindow):
         camera_form.addRow("Modèle", self.cinema_model)
         camera_form.addRow("Optique", optics_widget)
         camera_form.addRow("Résolution (px)", resolution_widget)
+        camera_form.addRow("FPS", self.cinema_fps)
         camera_group_layout.addLayout(camera_form)
 
         # -- Groupe : Planche Charuco --
@@ -793,13 +826,16 @@ class MainWindow(QMainWindow):
         if resolution:
             self.gopro_resolution_x.setText(str(resolution[0]))
             self.gopro_resolution_y.setText(str(resolution[1]))
+        self.gopro_fps.setText(str(data["fps"]) if data.get("fps") else "")
 
     def _capture_gopro_profile(self):
+        fps_text = self.gopro_fps.text().strip()
         return {
             "model": self.gopro_model.text(),
             "sensor_width": float(self.gopro_sensor_size.text()),
             "focal_length": float(self.gopro_focal_length.text()),
             "resolution": [int(self.gopro_resolution_x.text()), int(self.gopro_resolution_y.text())],
+            "fps": float(fps_text) if fps_text else 0.0,
         }
 
     def _load_camera_profile(self, data):
@@ -811,12 +847,15 @@ class MainWindow(QMainWindow):
         if resolution:
             self.cinema_resolution_x.setText(str(resolution[0]))
             self.cinema_resolution_y.setText(str(resolution[1]))
+        self.cinema_fps.setText(str(data["fps"]) if data.get("fps") else "")
 
     def _capture_camera_profile(self):
+        fps_text = self.cinema_fps.text().strip()
         return {
             "model": self.cinema_model.text(),
             "sensor_width": float(self.cinema_sensor_size.text()),
             "resolution": [int(self.cinema_resolution_x.text()), int(self.cinema_resolution_y.text())],
+            "fps": float(fps_text) if fps_text else 0.0,
         }
 
     def _load_charuco_profile(self, data):
@@ -850,15 +889,19 @@ class MainWindow(QMainWindow):
                 "forward": float(self.offset_forward.text()),
                 "left": float(self.offset_left.text()),
             }
+            gopro_fps_text = self.gopro_fps.text().strip()
+            cinema_fps_text = self.cinema_fps.text().strip()
             gopro_camera = {
                 "focal": float(self.gopro_focal_length.text()),
                 "sensor": float(self.gopro_sensor_size.text()),
                 "resolution": (int(self.gopro_resolution_x.text()), int(self.gopro_resolution_y.text())),
+                "fps": float(gopro_fps_text) if gopro_fps_text else 0.0,
             }
             cinema_camera = {
                 "focal": float(self.cinema_focal_length.text()),
                 "sensor": float(self.cinema_sensor_size.text()),
                 "resolution": (int(self.cinema_resolution_x.text()), int(self.cinema_resolution_y.text())),
+                "fps": float(cinema_fps_text) if cinema_fps_text else 0.0,
             }
             board = {
                 "dictionary": self.charuco_dictionary.currentText(),
@@ -937,23 +980,44 @@ class MainWindow(QMainWindow):
         inner_layout.setContentsMargins(16, 16, 16, 16)
         inner_layout.setSpacing(14)
 
-        inputs_group = QGroupBox("Fichiers d'entrée")
+        inputs_group = QGroupBox("GoPro 1")
         form = QFormLayout(inputs_group)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         form.setHorizontalSpacing(14)
         form.setVerticalSpacing(10)
 
-        self.capture_video = QLineEdit()
-        self.calibration_file = QLineEdit()
-        self.capture_video.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.calibration_file.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.capture_video_1 = QLineEdit()
+        self.calibration_file_1 = QLineEdit()
+        self.capture_video_1.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.calibration_file_1.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         form.addRow("Vidéo GoPro", self.create_file_row(
-            self.capture_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
+            self.capture_video_1, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
         ))
         form.addRow("Calibration JSON", self.create_file_row(
-            self.calibration_file, "Parcourir", "JSON (*.json);;Tous les fichiers (*)"
+            self.calibration_file_1, "Parcourir", "JSON (*.json);;Tous les fichiers (*)"
+        ))
+
+        self.gopro2_group = QGroupBox("GoPro 2 (optionnel)")
+        self.gopro2_group.setCheckable(True)
+        self.gopro2_group.setChecked(False)
+        gopro2_form = QFormLayout(self.gopro2_group)
+        gopro2_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        gopro2_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        gopro2_form.setHorizontalSpacing(14)
+        gopro2_form.setVerticalSpacing(10)
+
+        self.capture_video_2 = QLineEdit()
+        self.calibration_file_2 = QLineEdit()
+        self.capture_video_2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.calibration_file_2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        gopro2_form.addRow("Vidéo GoPro", self.create_file_row(
+            self.capture_video_2, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
+        ))
+        gopro2_form.addRow("Calibration JSON", self.create_file_row(
+            self.calibration_file_2, "Parcourir", "JSON (*.json);;Tous les fichiers (*)"
         ))
 
         mode_group = QGroupBox("Mode de tracking")
@@ -968,6 +1032,7 @@ class MainWindow(QMainWindow):
         mode_layout.addWidget(self.tracking_mode)
 
         inner_layout.addWidget(inputs_group)
+        inner_layout.addWidget(self.gopro2_group)
         inner_layout.addWidget(mode_group)
         inner_layout.addStretch()
 
@@ -999,18 +1064,33 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(content, "2 · Tracking")
 
     def run_tracking(self):
-        capture_path = self.capture_video.text()
-        calibration_path = self.calibration_file.text()
+        capture_path = self.capture_video_1.text()
+        calibration_path = self.calibration_file_1.text()
 
         if not capture_path or not calibration_path:
             QMessageBox.warning(self, "Entrée manquante", "Veuillez sélectionner la vidéo GoPro et le fichier de calibration.")
             return
 
         mode = self.tracking_mode.currentData()
-        tracker_class = SfmTracker if mode == "sfm" else Tracker
+
+        use_gopro2 = self.gopro2_group.isChecked()
+        if use_gopro2:
+            capture_path_2 = self.capture_video_2.text()
+            calibration_path_2 = self.calibration_file_2.text()
+            if not capture_path_2 or not calibration_path_2:
+                QMessageBox.warning(
+                    self, "Entrée manquante",
+                    "Veuillez sélectionner la vidéo et le fichier de calibration de la GoPro 2, "
+                    "ou décocher le groupe \"GoPro 2\".",
+                )
+                return
 
         try:
-            tracker = tracker_class(capture_path, calibration_path)
+            if use_gopro2:
+                tracker = DualTracker(capture_path, calibration_path, capture_path_2, calibration_path_2, mode)
+            else:
+                tracker_class = SfmTracker if mode == "sfm" else Tracker
+                tracker = tracker_class(capture_path, calibration_path)
         except Exception as exc:
             QMessageBox.critical(self, "Erreur de tracking", str(exc))
             return

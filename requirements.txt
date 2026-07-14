@@ -3,3 +3,5 @@ numpy>=1.24
 opencv-contrib-python>=4.8
 matplotlib>=3.6
 pycolmap>=3.10
+av>=11
+scipy>=1.10

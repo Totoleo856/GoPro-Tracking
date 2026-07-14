@@ -48,7 +48,15 @@ class Calibration:
         cy = height / 2.0
         return np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64)
 
-    def _create_camera_from_params(self, name: str, model: str, params) -> Camera:
+    def _video_fps(self, video_path) -> float:
+        capture = cv2.VideoCapture(str(video_path))
+        try:
+            fps = capture.get(cv2.CAP_PROP_FPS)
+        finally:
+            capture.release()
+        return float(fps if fps > 0.0 else 25.0)
+
+    def _create_camera_from_params(self, name: str, model: str, params, fallback_video=None) -> Camera:
         width, height = params["resolution"]
         focal_mm = params["focal"]
         sensor_width_mm = params["sensor"]
@@ -60,6 +68,10 @@ class Calibration:
         fy = focal_mm * height / sensor_height_mm
         cx = width / 2.0
         cy = height / 2.0
+
+        fps = float(params.get("fps") or 0.0)
+        if fps <= 0.0 and fallback_video is not None:
+            fps = self._video_fps(fallback_video)
 
         return Camera(
             name=name,
@@ -73,6 +85,7 @@ class Calibration:
             sensor_width=sensor_width_mm,
             sensor_height=sensor_height_mm,
             focal_length=focal_mm,
+            fps=fps,
         )
 
     def _camera_to_dict(self, camera: Camera) -> dict:
@@ -177,7 +190,9 @@ class Calibration:
 
         if progress_callback:
             progress_callback(0, "Préparation des caméras...")
-        gopro_camera = self._create_camera_from_params("GoPro", self.gopro_model, self.gopro_camera)
+        gopro_camera = self._create_camera_from_params(
+            "GoPro", self.gopro_model, self.gopro_camera, fallback_video=self.gopro_video
+        )
         cinema_camera = self._create_camera_from_params("Cinema", self.cinema_model, self.cinema_camera)
 
         gopro_matrix = self._camera_matrix_for(self.gopro_camera)

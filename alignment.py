@@ -1,6 +1,29 @@
 import numpy as np
 
 
+def average_rotations(rotations):
+    """
+    Moyenne un ensemble de matrices de rotation 3x3 par SVD (Markley et al.) :
+    on accumule les rotations puis on ré-orthonormalise le résultat, avec une
+    correction de réflexion si nécessaire pour rester une rotation propre
+    (det = +1).
+
+    Paramètres
+    ----------
+    rotations : séquence de np.ndarray (3, 3), au moins 1 élément.
+
+    Retourne
+    --------
+    np.ndarray (3, 3)
+    """
+    accumulator = sum(rotations)
+    u, _, vt = np.linalg.svd(accumulator)
+    s = np.eye(3)
+    if np.linalg.det(u) * np.linalg.det(vt) < 0:
+        s[-1, -1] = -1.0
+    return u @ s @ vt
+
+
 def umeyama_alignment(source_points, target_points):
     """
     Calcule la transformation de similarité (échelle, rotation, translation)
