@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -40,6 +41,7 @@ except ImportError:
 from calibration import Calibration
 from tracking import Tracker
 from sfm_tracking import SfmTracker
+from profiles import list_profiles, load_profile, save_profile
 
 
 STYLE_SHEET = """
@@ -366,6 +368,63 @@ class MainWindow(QMainWindow):
         status_label.setText(message)
 
     # ------------------------------------------------------------------
+    # Presets (profils GoPro / Caméra / Planche Charuco)
+    # ------------------------------------------------------------------
+    def _refresh_profile_combo(self, combo, kind):
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("— Choisir un profil —")
+        combo.addItems(list_profiles(kind))
+        combo.blockSignals(False)
+
+    def _create_profile_bar(self, kind, on_load, get_current_values):
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        combo = QComboBox()
+        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._refresh_profile_combo(combo, kind)
+
+        def handle_selection(index):
+            if index <= 0:
+                return
+            name = combo.itemText(index)
+            try:
+                data = load_profile(kind, name)
+            except Exception as exc:
+                QMessageBox.warning(self, "Erreur", f"Impossible de charger le profil :\n{exc}")
+                return
+            on_load(data)
+
+        combo.currentIndexChanged.connect(handle_selection)
+
+        save_button = QPushButton("Enregistrer...")
+
+        def handle_save():
+            name, ok = QInputDialog.getText(self, "Enregistrer le profil", "Nom du profil :")
+            name = name.strip()
+            if not ok or not name:
+                return
+            try:
+                data = get_current_values()
+                save_profile(kind, name, data)
+            except Exception as exc:
+                QMessageBox.warning(self, "Erreur", f"Impossible d'enregistrer le profil :\n{exc}")
+                return
+            self._refresh_profile_combo(combo, kind)
+            index = combo.findText(name)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+
+        save_button.clicked.connect(handle_save)
+
+        layout.addWidget(combo)
+        layout.addWidget(save_button)
+        return container
+
+    # ------------------------------------------------------------------
     # Aperçu 3D de la trajectoire
     # ------------------------------------------------------------------
     def _style_3d_axes(self, ax):
@@ -469,10 +528,17 @@ class MainWindow(QMainWindow):
         self.offset_up = QLineEdit()
         self.offset_forward = QLineEdit()
         self.offset_left = QLineEdit()
-        self.focal_length = QLineEdit()
-        self.sensor_size = QLineEdit()
-        self.resolution_x = QLineEdit()
-        self.resolution_y = QLineEdit()
+
+        self.gopro_focal_length = QLineEdit()
+        self.gopro_sensor_size = QLineEdit()
+        self.gopro_resolution_x = QLineEdit()
+        self.gopro_resolution_y = QLineEdit()
+
+        self.cinema_focal_length = QLineEdit()
+        self.cinema_sensor_size = QLineEdit()
+        self.cinema_resolution_x = QLineEdit()
+        self.cinema_resolution_y = QLineEdit()
+
         self.charuco_squares_x = QLineEdit("5")
         self.charuco_squares_y = QLineEdit("7")
         self.charuco_square_length = QLineEdit("0.04")
@@ -489,15 +555,19 @@ class MainWindow(QMainWindow):
             self.offset_up,
             self.offset_forward,
             self.offset_left,
-            self.focal_length,
-            self.sensor_size,
+            self.gopro_focal_length,
+            self.gopro_sensor_size,
+            self.cinema_focal_length,
+            self.cinema_sensor_size,
             self.charuco_square_length,
             self.charuco_marker_length,
         ):
             edit.setValidator(validator_float)
         for edit in (
-            self.resolution_x,
-            self.resolution_y,
+            self.gopro_resolution_x,
+            self.gopro_resolution_y,
+            self.cinema_resolution_x,
+            self.cinema_resolution_y,
             self.charuco_squares_x,
             self.charuco_squares_y,
         ):
@@ -507,10 +577,14 @@ class MainWindow(QMainWindow):
             (self.offset_up, 70),
             (self.offset_forward, 70),
             (self.offset_left, 70),
-            (self.focal_length, 70),
-            (self.sensor_size, 70),
-            (self.resolution_x, 60),
-            (self.resolution_y, 60),
+            (self.gopro_focal_length, 70),
+            (self.gopro_sensor_size, 70),
+            (self.gopro_resolution_x, 60),
+            (self.gopro_resolution_y, 60),
+            (self.cinema_focal_length, 70),
+            (self.cinema_sensor_size, 70),
+            (self.cinema_resolution_x, 60),
+            (self.cinema_resolution_y, 60),
             (self.charuco_squares_x, 50),
             (self.charuco_squares_y, 50),
             (self.charuco_square_length, 70),
@@ -554,9 +628,51 @@ class MainWindow(QMainWindow):
             self.gopro_calibration_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
         ))
 
-        # -- Groupe : Caméra cinéma --
-        camera_group = QGroupBox("Caméra cinéma")
-        camera_form = QFormLayout(camera_group)
+        # -- Groupe : Profil GoPro --
+        gopro_camera_group = QGroupBox("Profil GoPro")
+        gopro_camera_layout = QVBoxLayout(gopro_camera_group)
+        gopro_camera_layout.setSpacing(10)
+        gopro_camera_layout.addWidget(self._create_profile_bar(
+            "gopro", self._load_gopro_profile, self._capture_gopro_profile
+        ))
+
+        gopro_form = QFormLayout()
+        gopro_form.setHorizontalSpacing(14)
+        gopro_form.setVerticalSpacing(10)
+
+        gopro_optics_widget = QWidget()
+        gopro_optics_layout = QHBoxLayout(gopro_optics_widget)
+        gopro_optics_layout.setContentsMargins(0, 0, 0, 0)
+        gopro_optics_layout.setSpacing(8)
+        gopro_optics_layout.addWidget(QLabel("Focale (mm)"))
+        gopro_optics_layout.addWidget(self.gopro_focal_length)
+        gopro_optics_layout.addSpacing(10)
+        gopro_optics_layout.addWidget(QLabel("Capteur (mm)"))
+        gopro_optics_layout.addWidget(self.gopro_sensor_size)
+        gopro_optics_layout.addStretch()
+
+        gopro_resolution_widget = QWidget()
+        gopro_resolution_layout = QHBoxLayout(gopro_resolution_widget)
+        gopro_resolution_layout.setContentsMargins(0, 0, 0, 0)
+        gopro_resolution_layout.setSpacing(4)
+        gopro_resolution_layout.addWidget(self.gopro_resolution_x)
+        gopro_resolution_layout.addWidget(QLabel("×"))
+        gopro_resolution_layout.addWidget(self.gopro_resolution_y)
+        gopro_resolution_layout.addStretch()
+
+        gopro_form.addRow("Optique", gopro_optics_widget)
+        gopro_form.addRow("Résolution (px)", gopro_resolution_widget)
+        gopro_camera_layout.addLayout(gopro_form)
+
+        # -- Groupe : Profil Caméra cinéma --
+        camera_group = QGroupBox("Profil Caméra cinéma")
+        camera_group_layout = QVBoxLayout(camera_group)
+        camera_group_layout.setSpacing(10)
+        camera_group_layout.addWidget(self._create_profile_bar(
+            "camera", self._load_camera_profile, self._capture_camera_profile
+        ))
+
+        camera_form = QFormLayout()
         camera_form.setHorizontalSpacing(14)
         camera_form.setVerticalSpacing(10)
 
@@ -565,27 +681,34 @@ class MainWindow(QMainWindow):
         optics_layout.setContentsMargins(0, 0, 0, 0)
         optics_layout.setSpacing(8)
         optics_layout.addWidget(QLabel("Focale (mm)"))
-        optics_layout.addWidget(self.focal_length)
+        optics_layout.addWidget(self.cinema_focal_length)
         optics_layout.addSpacing(10)
         optics_layout.addWidget(QLabel("Capteur (mm)"))
-        optics_layout.addWidget(self.sensor_size)
+        optics_layout.addWidget(self.cinema_sensor_size)
         optics_layout.addStretch()
 
         resolution_widget = QWidget()
         resolution_layout = QHBoxLayout(resolution_widget)
         resolution_layout.setContentsMargins(0, 0, 0, 0)
         resolution_layout.setSpacing(4)
-        resolution_layout.addWidget(self.resolution_x)
+        resolution_layout.addWidget(self.cinema_resolution_x)
         resolution_layout.addWidget(QLabel("×"))
-        resolution_layout.addWidget(self.resolution_y)
+        resolution_layout.addWidget(self.cinema_resolution_y)
         resolution_layout.addStretch()
 
         camera_form.addRow("Optique", optics_widget)
         camera_form.addRow("Résolution (px)", resolution_widget)
+        camera_group_layout.addLayout(camera_form)
 
         # -- Groupe : Planche Charuco --
         board_group = QGroupBox("Planche Charuco")
-        board_form = QFormLayout(board_group)
+        board_group_layout = QVBoxLayout(board_group)
+        board_group_layout.setSpacing(10)
+        board_group_layout.addWidget(self._create_profile_bar(
+            "charuco_board", self._load_charuco_profile, self._capture_charuco_profile
+        ))
+
+        board_form = QFormLayout()
         board_form.setHorizontalSpacing(14)
         board_form.setVerticalSpacing(10)
 
@@ -613,9 +736,11 @@ class MainWindow(QMainWindow):
 
         board_form.addRow("Dictionnaire", board_widget)
         board_form.addRow("Tailles (m)", size_widget)
+        board_group_layout.addLayout(board_form)
 
         inner_layout.addWidget(rig_group)
         inner_layout.addWidget(videos_group)
+        inner_layout.addWidget(gopro_camera_group)
         inner_layout.addWidget(camera_group)
         inner_layout.addWidget(board_group)
         inner_layout.addStretch()
@@ -647,6 +772,61 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(content, "1 · Calibration")
 
+    def _load_gopro_profile(self, data):
+        if "model" in data:
+            self.gopro_model.setText(str(data["model"]))
+        if "sensor_width" in data:
+            self.gopro_sensor_size.setText(str(data["sensor_width"]))
+        if "focal_length" in data:
+            self.gopro_focal_length.setText(str(data["focal_length"]))
+        resolution = data.get("resolution")
+        if resolution:
+            self.gopro_resolution_x.setText(str(resolution[0]))
+            self.gopro_resolution_y.setText(str(resolution[1]))
+
+    def _capture_gopro_profile(self):
+        return {
+            "model": self.gopro_model.text(),
+            "sensor_width": float(self.gopro_sensor_size.text()),
+            "focal_length": float(self.gopro_focal_length.text()),
+            "resolution": [int(self.gopro_resolution_x.text()), int(self.gopro_resolution_y.text())],
+        }
+
+    def _load_camera_profile(self, data):
+        if "sensor_width" in data:
+            self.cinema_sensor_size.setText(str(data["sensor_width"]))
+        resolution = data.get("resolution")
+        if resolution:
+            self.cinema_resolution_x.setText(str(resolution[0]))
+            self.cinema_resolution_y.setText(str(resolution[1]))
+
+    def _capture_camera_profile(self):
+        return {
+            "sensor_width": float(self.cinema_sensor_size.text()),
+            "resolution": [int(self.cinema_resolution_x.text()), int(self.cinema_resolution_y.text())],
+        }
+
+    def _load_charuco_profile(self, data):
+        if "dictionary" in data:
+            self.charuco_dictionary.setCurrentText(str(data["dictionary"]))
+        if "squares_x" in data:
+            self.charuco_squares_x.setText(str(data["squares_x"]))
+        if "squares_y" in data:
+            self.charuco_squares_y.setText(str(data["squares_y"]))
+        if "square_length" in data:
+            self.charuco_square_length.setText(str(data["square_length"]))
+        if "marker_length" in data:
+            self.charuco_marker_length.setText(str(data["marker_length"]))
+
+    def _capture_charuco_profile(self):
+        return {
+            "dictionary": self.charuco_dictionary.currentText(),
+            "squares_x": int(self.charuco_squares_x.text()),
+            "squares_y": int(self.charuco_squares_y.text()),
+            "square_length": float(self.charuco_square_length.text()),
+            "marker_length": float(self.charuco_marker_length.text()),
+        }
+
     def run_calibration(self):
         try:
             offset = {
@@ -654,9 +834,16 @@ class MainWindow(QMainWindow):
                 "forward": float(self.offset_forward.text()),
                 "left": float(self.offset_left.text()),
             }
-            focal = float(self.focal_length.text())
-            sensor = float(self.sensor_size.text())
-            resolution = (int(self.resolution_x.text()), int(self.resolution_y.text()))
+            gopro_camera = {
+                "focal": float(self.gopro_focal_length.text()),
+                "sensor": float(self.gopro_sensor_size.text()),
+                "resolution": (int(self.gopro_resolution_x.text()), int(self.gopro_resolution_y.text())),
+            }
+            cinema_camera = {
+                "focal": float(self.cinema_focal_length.text()),
+                "sensor": float(self.cinema_sensor_size.text()),
+                "resolution": (int(self.cinema_resolution_x.text()), int(self.cinema_resolution_y.text())),
+            }
             board = {
                 "dictionary": self.charuco_dictionary.currentText(),
                 "squares_x": int(self.charuco_squares_x.text()),
@@ -673,7 +860,8 @@ class MainWindow(QMainWindow):
             cinema_video=self.cinema_calibration_video.text(),
             gopro_video=self.gopro_calibration_video.text(),
             offset=offset,
-            camera={"focal": focal, "sensor": sensor, "resolution": resolution},
+            gopro_camera=gopro_camera,
+            cinema_camera=cinema_camera,
             charuco_board=board,
         )
 

@@ -14,12 +14,15 @@ from pose import Pose
 
 
 class Calibration:
-    def __init__(self, gopro_model, cinema_video, gopro_video, offset, camera, charuco_board=None):
+    def __init__(
+        self, gopro_model, cinema_video, gopro_video, offset, gopro_camera, cinema_camera, charuco_board=None
+    ):
         self.gopro_model = gopro_model
         self.cinema_video = cinema_video
         self.gopro_video = gopro_video
         self.offset = offset
-        self.camera = camera
+        self.gopro_camera = gopro_camera
+        self.cinema_camera = cinema_camera
         self.charuco_board = charuco_board or {
             "dictionary": "DICT_6X6_250",
             "squares_x": 5,
@@ -28,10 +31,10 @@ class Calibration:
             "marker_length": 0.03,
         }
 
-    def _camera_matrix(self):
-        width, height = self.camera["resolution"]
-        focal_mm = self.camera["focal"]
-        sensor_width_mm = self.camera["sensor"]
+    def _camera_matrix_for(self, params):
+        width, height = params["resolution"]
+        focal_mm = params["focal"]
+        sensor_width_mm = params["sensor"]
         if sensor_width_mm == 0:
             raise ValueError("La taille du capteur ne peut pas être zéro.")
 
@@ -42,10 +45,10 @@ class Calibration:
         cy = height / 2.0
         return np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float64)
 
-    def _create_camera(self, name: str) -> Camera:
-        width, height = self.camera["resolution"]
-        focal_mm = self.camera["focal"]
-        sensor_width_mm = self.camera["sensor"]
+    def _create_camera_from_params(self, name: str, model: str, params) -> Camera:
+        width, height = params["resolution"]
+        focal_mm = params["focal"]
+        sensor_width_mm = params["sensor"]
         if sensor_width_mm == 0:
             raise ValueError("La taille du capteur ne peut pas être zéro.")
 
@@ -57,7 +60,7 @@ class Calibration:
 
         return Camera(
             name=name,
-            model=self.gopro_model,
+            model=model,
             width=width,
             height=height,
             fx=fx,
@@ -113,7 +116,7 @@ class Calibration:
             z = 0.0
         return {"x": float(math.degrees(x)), "y": float(math.degrees(y)), "z": float(math.degrees(z))}
 
-    def _detect_charuco_pose(self, video_path, progress_callback=None, progress_range=(0, 100)):
+    def _detect_charuco_pose(self, video_path, camera_matrix, progress_callback=None, progress_range=(0, 100)):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
             raise ImportError(
                 "OpenCV contrib est requis pour Charuco : pip install opencv-contrib-python"
@@ -125,7 +128,6 @@ class Calibration:
 
         board = self._create_charuco_board()
         detector = cv2.aruco.CharucoDetector(board)
-        camera_matrix = self._camera_matrix()
         dist_coeffs = np.zeros((5, 1), dtype=np.float64)
 
         max_frames = 60
@@ -172,11 +174,14 @@ class Calibration:
 
         if progress_callback:
             progress_callback(0, "Préparation des caméras...")
-        gopro_camera = self._create_camera("GoPro")
-        cinema_camera = self._create_camera("Cinema")
+        gopro_camera = self._create_camera_from_params("GoPro", self.gopro_model, self.gopro_camera)
+        cinema_camera = self._create_camera_from_params("Cinema", "Cinema", self.cinema_camera)
 
-        gopro_pose = self._detect_charuco_pose(self.gopro_video, progress_callback, (5, 50))
-        cinema_pose = self._detect_charuco_pose(self.cinema_video, progress_callback, (50, 95))
+        gopro_matrix = self._camera_matrix_for(self.gopro_camera)
+        cinema_matrix = self._camera_matrix_for(self.cinema_camera)
+
+        gopro_pose = self._detect_charuco_pose(self.gopro_video, gopro_matrix, progress_callback, (5, 50))
+        cinema_pose = self._detect_charuco_pose(self.cinema_video, cinema_matrix, progress_callback, (50, 95))
 
         if gopro_pose is None or cinema_pose is None:
             raise RuntimeError("Impossible d'extraire la pose Charuco sur l'une des vidéos.")
