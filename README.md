@@ -86,25 +86,37 @@ L'objectif est de fournir une application autonome capable de gérer l'ensemble 
 
 ---
 
-## Architecture générale envisagée
+## Installation
 
-Le pipeline est organisé autour de trois étapes principales :
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
-### Calibration
+Le tracking par Structure-from-Motion (voir plus bas) s'appuie sur [COLMAP](https://colmap.github.io/) via son binding Python `pycolmap` (licence BSD, usage commercial autorisé), installé automatiquement avec les dépendances ci-dessus — aucune installation séparée de COLMAP n'est nécessaire.
 
-Détermination de la relation géométrique entre :
+---
 
-- la GoPro ;
-- la caméra cinéma ;
-- le repère défini par la cible ArUco.
+## Architecture du pipeline
 
-### Tracking
+L'application (interface PyQt6, `main.py` / `main_window.py`) est organisée en trois onglets correspondant aux trois étapes du workflow :
 
-Reconstruction de la trajectoire de la GoPro, puis conversion vers la trajectoire du plan film de la caméra cinéma.
+### 1. Calibration
 
-### Vérification et Export
+Détecte la cible Charuco simultanément dans la vidéo GoPro et la vidéo caméra cinéma (`calibration.py`) pour calculer la transformation rigide entre les deux caméras (le « rig »), et produit un fichier `calibration.json` réutilisé par l'étape de tracking.
 
-Visualisation de la trajectoire reconstruite et export vers différents environnements VFX et 3D.
+### 2. Tracking
+
+Reconstruit la trajectoire de la GoPro à partir de la vidéo de prise, puis la convertit vers la trajectoire du plan film de la caméra cinéma via le rig calculé à l'étape précédente. Deux modes sont disponibles, sélectionnables dans l'interface :
+
+- **SfM (COLMAP)** — mode par défaut, adapté au workflow réel décrit plus haut : la cible Charuco n'est visible qu'au tout début de la prise. La trajectoire de la GoPro est reconstruite par Structure-from-Motion à partir des points caractéristiques naturels de la scène (`sfm_tracking.py`), puis recalée dans le repère métrique du Charuco à partir des quelques images où la cible et la reconstruction SfM se chevauchent (recalage par similarité, algorithme de Umeyama avec rejet des correspondances aberrantes, `alignment.py`).
+- **Charuco continu** — mode plus simple (`tracking.py`), pour les prises où la cible reste visible tout du long ; la pose est alors calculée directement image par image par détection Charuco, sans reconstruction SfM.
+
+Le résultat est écrit dans `data/tracking.json` (position, orientation et index réel de chaque image reconstruite).
+
+### 3. Vérification et Export
+
+Aperçu 3D interactif de la trajectoire reconstruite (matplotlib intégré à l'interface), généré automatiquement dès la sélection du fichier de tracking. L'export permet d'enregistrer ce fichier à l'emplacement de son choix pour l'utiliser dans un logiciel VFX/3D externe.
 
 ---
 
