@@ -7,6 +7,14 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.3.1] - 2026-07-15
+
+### Corrigé
+- Impossible de taper "." dans les champs numériques sur une machine dont la locale
+  régionale utilise la virgule comme séparateur décimal (`QDoubleValidator` suivait la
+  locale système). Le point est désormais forcé comme séparateur décimal partout dans
+  l'app, quelle que soit la locale de la machine.
+
 ## [1.3.0] - 2026-07-15
 
 ### Ajouté
