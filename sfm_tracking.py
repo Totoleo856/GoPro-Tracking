@@ -38,7 +38,10 @@ class SfmTracker:
     repère métrique du Charuco.
     """
 
-    def __init__(self, video, calibration_file, charuco_window_frames=CHARUCO_WINDOW_FRAMES):
+    def __init__(
+        self, video, calibration_file, charuco_window_frames=CHARUCO_WINDOW_FRAMES,
+        num_threads=None, max_num_features=None,
+    ):
         if pycolmap is None:
             raise ImportError("pycolmap est requis pour le tracking SfM : pip install pycolmap")
         if cv2 is None or np is None:
@@ -47,6 +50,8 @@ class SfmTracker:
             )
         self.video = video
         self.charuco_window_frames = charuco_window_frames
+        self.num_threads = num_threads
+        self.max_num_features = max_num_features
         # Réutilise le chargement de calibration, le Rig et la détection
         # Charuco déjà implémentés par Tracker, sans dupliquer ce code.
         self._helper = Tracker(video, calibration_file)
@@ -116,15 +121,21 @@ class SfmTracker:
         """
         COLMAP prend tous les cœurs disponibles par défaut (num_threads=-1), ce qui peut
         saturer entièrement la machine et la rendre totalement inréactive le temps du
-        calcul (perçu comme un plantage) sur une machine grand public. On laisse
-        volontairement 2 cœurs de libre pour le système — ça ne change rien à la
-        précision du calcul, juste à sa durée.
+        calcul (perçu comme un plantage) sur une machine grand public. Sauf valeur
+        explicite fournie par l'utilisateur, on laisse volontairement 2 cœurs de libre
+        pour le système — ça ne change rien à la précision du calcul, juste à sa durée.
         """
+        if self.num_threads is not None:
+            return max(1, int(self.num_threads))
         cpu_count = os.cpu_count() or 4
         return max(1, cpu_count - 2)
 
     def _run_colmap(self, image_dir, frame_paths, progress_callback):
         num_threads = self._colmap_thread_count()
+
+        sift_options = pycolmap.SiftExtractionOptions()
+        if self.max_num_features is not None:
+            sift_options.max_num_features = int(self.max_num_features)
 
         with tempfile.TemporaryDirectory(prefix="colmap_db_") as db_dir:
             database_path = Path(db_dir) / "database.db"
@@ -135,7 +146,7 @@ class SfmTracker:
                 progress_callback(15, "Extraction des features (COLMAP)...")
             pycolmap.extract_features(
                 database_path, image_dir,
-                extraction_options=pycolmap.FeatureExtractionOptions(num_threads=num_threads),
+                extraction_options=pycolmap.FeatureExtractionOptions(num_threads=num_threads, sift=sift_options),
             )
 
             if progress_callback:

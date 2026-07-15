@@ -7,6 +7,25 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.4.0] - 2026-07-15
+
+### Ajouté
+- Onglet Tracking : threads COLMAP et nombre max de points par image (2048/4096/8192)
+  configurables directement dans l'interface (mode SfM), visibles uniquement quand ce
+  mode est sélectionné (masqués en mode Charuco continu).
+- Onglet Calibration : les groupes Rig, Profil GoPro, Profil Caméra cinéma et Planche
+  Charuco n'affichent plus qu'un sélecteur de profil et un bouton "Ajouter" — les champs
+  détaillés s'ouvrent dans une fenêtre dédiée avec un bouton "Enregistrer". Le Rig est
+  désormais lui aussi un profil réutilisable (nom + offsets).
+
+### Corrigé
+- **Aperçu 3D (onglet Vérification)** : la position et la direction de la caméra étaient
+  lues directement depuis la matrice sans tenir compte de la convention monde→caméra du
+  fichier de tracking, déformant la trajectoire et l'orientation affichées. La reconstruction
+  elle-même n'était pas nécessairement en cause.
+- Case à cocher "GoPro 2" et champ threads coupés par un espacement insuffisant des
+  `QGroupBox`.
+
 ## [1.3.1] - 2026-07-15
 
 ### Corrigé

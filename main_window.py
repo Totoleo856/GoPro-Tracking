@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -10,6 +11,7 @@ from PyQt6.QtGui import QDoubleValidator, QFont, QIntValidator
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -24,6 +26,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -88,7 +91,7 @@ QGroupBox {
     background-color: #26272b;
     border: 1px solid #34363b;
     border-radius: 8px;
-    margin-top: 14px;
+    margin-top: 20px;
     padding: 16px 14px 14px 14px;
     font-weight: 600;
 }
@@ -403,7 +406,7 @@ class MainWindow(QMainWindow):
         combo.addItems(list_profiles(kind))
         combo.blockSignals(False)
 
-    def _create_profile_bar(self, kind, on_load, get_current_values, name_field=None):
+    def _create_profile_bar(self, kind, on_load, get_current_values, fields_layout, name_field=None, dialog_title="Ajouter un profil"):
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -426,7 +429,12 @@ class MainWindow(QMainWindow):
 
         combo.currentIndexChanged.connect(handle_selection)
 
-        save_button = QPushButton("Enregistrer...")
+        dialog = QDialog(self)
+        dialog.setWindowTitle(dialog_title)
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.addLayout(fields_layout)
+
+        save_button = QPushButton("Enregistrer")
 
         def handle_save():
             if name_field is not None:
@@ -438,7 +446,7 @@ class MainWindow(QMainWindow):
                     )
                     return
             else:
-                name, ok = QInputDialog.getText(self, "Enregistrer le profil", "Nom du profil :")
+                name, ok = QInputDialog.getText(dialog, "Enregistrer le profil", "Nom du profil :")
                 name = name.strip()
                 if not ok or not name:
                     return
@@ -452,11 +460,16 @@ class MainWindow(QMainWindow):
             index = combo.findText(name)
             if index >= 0:
                 combo.setCurrentIndex(index)
+            dialog.accept()
 
         save_button.clicked.connect(handle_save)
+        dialog_layout.addWidget(save_button)
+
+        add_button = QPushButton("Ajouter")
+        add_button.clicked.connect(lambda: dialog.exec())
 
         layout.addWidget(combo)
-        layout.addWidget(save_button)
+        layout.addWidget(add_button)
         return container
 
     # ------------------------------------------------------------------
@@ -645,7 +658,10 @@ class MainWindow(QMainWindow):
 
         # -- Groupe : Rig --
         rig_group = QGroupBox("Rig")
-        rig_form = QFormLayout(rig_group)
+        rig_group_layout = QVBoxLayout(rig_group)
+        rig_group_layout.setSpacing(10)
+
+        rig_form = QFormLayout()
         rig_form.setHorizontalSpacing(14)
         rig_form.setVerticalSpacing(10)
 
@@ -664,6 +680,11 @@ class MainWindow(QMainWindow):
         rig_form.addRow("Nom du rig", self.rig_name)
         rig_form.addRow("Offsets (m)", offsets_widget)
 
+        rig_group_layout.addWidget(self._create_profile_bar(
+            "rig", self._load_rig_profile, self._capture_rig_profile, rig_form,
+            name_field=self.rig_name, dialog_title="Ajouter un rig",
+        ))
+
         # -- Groupe : Vidéos de calibration --
         videos_group = QGroupBox("Vidéos de calibration")
         videos_form = QFormLayout(videos_group)
@@ -680,9 +701,6 @@ class MainWindow(QMainWindow):
         gopro_camera_group = QGroupBox("Profil GoPro")
         gopro_camera_layout = QVBoxLayout(gopro_camera_group)
         gopro_camera_layout.setSpacing(10)
-        gopro_camera_layout.addWidget(self._create_profile_bar(
-            "gopro", self._load_gopro_profile, self._capture_gopro_profile, name_field=self.gopro_model
-        ))
 
         gopro_form = QFormLayout()
         gopro_form.setHorizontalSpacing(14)
@@ -712,15 +730,16 @@ class MainWindow(QMainWindow):
         gopro_form.addRow("Optique", gopro_optics_widget)
         gopro_form.addRow("Résolution (px)", gopro_resolution_widget)
         gopro_form.addRow("FPS", self.gopro_fps)
-        gopro_camera_layout.addLayout(gopro_form)
+
+        gopro_camera_layout.addWidget(self._create_profile_bar(
+            "gopro", self._load_gopro_profile, self._capture_gopro_profile, gopro_form,
+            name_field=self.gopro_model, dialog_title="Ajouter un profil GoPro",
+        ))
 
         # -- Groupe : Profil Caméra cinéma --
         camera_group = QGroupBox("Profil Caméra cinéma")
         camera_group_layout = QVBoxLayout(camera_group)
         camera_group_layout.setSpacing(10)
-        camera_group_layout.addWidget(self._create_profile_bar(
-            "camera", self._load_camera_profile, self._capture_camera_profile, name_field=self.cinema_model
-        ))
 
         camera_form = QFormLayout()
         camera_form.setHorizontalSpacing(14)
@@ -750,15 +769,16 @@ class MainWindow(QMainWindow):
         camera_form.addRow("Optique", optics_widget)
         camera_form.addRow("Résolution (px)", resolution_widget)
         camera_form.addRow("FPS", self.cinema_fps)
-        camera_group_layout.addLayout(camera_form)
+
+        camera_group_layout.addWidget(self._create_profile_bar(
+            "camera", self._load_camera_profile, self._capture_camera_profile, camera_form,
+            name_field=self.cinema_model, dialog_title="Ajouter un profil Caméra cinéma",
+        ))
 
         # -- Groupe : Planche Charuco --
         board_group = QGroupBox("Planche Charuco")
         board_group_layout = QVBoxLayout(board_group)
         board_group_layout.setSpacing(10)
-        board_group_layout.addWidget(self._create_profile_bar(
-            "charuco_board", self._load_charuco_profile, self._capture_charuco_profile
-        ))
 
         board_form = QFormLayout()
         board_form.setHorizontalSpacing(14)
@@ -788,7 +808,11 @@ class MainWindow(QMainWindow):
 
         board_form.addRow("Dictionnaire", board_widget)
         board_form.addRow("Tailles (m)", size_widget)
-        board_group_layout.addLayout(board_form)
+
+        board_group_layout.addWidget(self._create_profile_bar(
+            "charuco_board", self._load_charuco_profile, self._capture_charuco_profile, board_form,
+            dialog_title="Ajouter une planche Charuco",
+        ))
 
         inner_layout.addWidget(rig_group)
         inner_layout.addWidget(videos_group)
@@ -823,6 +847,24 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(footer)
 
         self.tabs.addTab(content, "1 · Calibration")
+
+    def _load_rig_profile(self, data):
+        if "rig_name" in data:
+            self.rig_name.setText(str(data["rig_name"]))
+        if "offset_up" in data:
+            self.offset_up.setText(str(data["offset_up"]))
+        if "offset_forward" in data:
+            self.offset_forward.setText(str(data["offset_forward"]))
+        if "offset_left" in data:
+            self.offset_left.setText(str(data["offset_left"]))
+
+    def _capture_rig_profile(self):
+        return {
+            "rig_name": self.rig_name.text(),
+            "offset_up": float(self.offset_up.text()),
+            "offset_forward": float(self.offset_forward.text()),
+            "offset_left": float(self.offset_left.text()),
+        }
 
     def _load_gopro_profile(self, data):
         if "model" in data:
@@ -1040,6 +1082,49 @@ class MainWindow(QMainWindow):
         )
         mode_layout.addWidget(self.tracking_mode)
 
+        cpu_count = os.cpu_count() or 4
+        self.threads_row = QWidget()
+        threads_row = self.threads_row
+        threads_layout = QHBoxLayout(threads_row)
+        threads_layout.setContentsMargins(0, 8, 0, 0)
+        threads_layout.setSpacing(8)
+        threads_layout.addWidget(QLabel("Threads COLMAP (mode SfM)"))
+        self.colmap_threads = QSpinBox()
+        self.colmap_threads.setRange(1, cpu_count)
+        self.colmap_threads.setValue(max(1, cpu_count - 2))
+        self.colmap_threads.setToolTip(
+            f"Cette machine a {cpu_count} cœurs logiques. Par défaut, 2 sont laissés "
+            "au système pour éviter qu'il ne devienne inréactif pendant le calcul."
+        )
+        self.set_compact_field(self.colmap_threads, 100)
+        threads_layout.addWidget(self.colmap_threads)
+        threads_layout.addStretch()
+        mode_layout.addWidget(threads_row)
+
+        self.features_row = QWidget()
+        features_row = self.features_row
+        features_layout = QHBoxLayout(features_row)
+        features_layout.setContentsMargins(0, 4, 0, 0)
+        features_layout.setSpacing(8)
+        features_layout.addWidget(QLabel("Points max par image (mode SfM)"))
+        self.colmap_max_features = QComboBox()
+        self.colmap_max_features.addItem("2048", userData=2048)
+        self.colmap_max_features.addItem("4096", userData=4096)
+        self.colmap_max_features.addItem("8192 (par défaut COLMAP)", userData=8192)
+        self.colmap_max_features.setCurrentIndex(2)
+        self.colmap_max_features.setToolTip(
+            "Nombre maximum de points-clés SIFT extraits par image. Réduire ce nombre "
+            "accélère l'extraction et le bundle adjustment, mais peut faire échouer "
+            "l'enregistrement de certaines frames si la scène est peu texturée."
+        )
+        self.set_compact_field(self.colmap_max_features, 180)
+        features_layout.addWidget(self.colmap_max_features)
+        features_layout.addStretch()
+        mode_layout.addWidget(features_row)
+
+        self.tracking_mode.currentIndexChanged.connect(self._update_tracking_mode_fields)
+        self._update_tracking_mode_fields()
+
         inner_layout.addWidget(inputs_group)
         inner_layout.addWidget(self.gopro2_group)
         inner_layout.addWidget(mode_group)
@@ -1072,6 +1157,11 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(content, "2 · Tracking")
 
+    def _update_tracking_mode_fields(self):
+        is_sfm = self.tracking_mode.currentData() == "sfm"
+        self.threads_row.setVisible(is_sfm)
+        self.features_row.setVisible(is_sfm)
+
     def run_tracking(self):
         capture_path = self.capture_video_1.text()
         calibration_path = self.calibration_file_1.text()
@@ -1094,12 +1184,21 @@ class MainWindow(QMainWindow):
                 )
                 return
 
+        num_threads = self.colmap_threads.value()
+        max_num_features = self.colmap_max_features.currentData()
+
         try:
             if use_gopro2:
-                tracker = DualTracker(capture_path, calibration_path, capture_path_2, calibration_path_2, mode)
+                tracker = DualTracker(
+                    capture_path, calibration_path, capture_path_2, calibration_path_2, mode,
+                    num_threads=num_threads, max_num_features=max_num_features,
+                )
+            elif mode == "sfm":
+                tracker = SfmTracker(
+                    capture_path, calibration_path, num_threads=num_threads, max_num_features=max_num_features,
+                )
             else:
-                tracker_class = SfmTracker if mode == "sfm" else Tracker
-                tracker = tracker_class(capture_path, calibration_path)
+                tracker = Tracker(capture_path, calibration_path)
         except Exception as exc:
             QMessageBox.critical(self, "Erreur de tracking", str(exc))
             return
@@ -1226,7 +1325,15 @@ class MainWindow(QMainWindow):
             raise ValueError("Le fichier de tracking ne contient aucune image.")
 
         matrices = np.array([frame["matrix"] for frame in frames], dtype=np.float64)
-        return matrices[:, :3, 3], matrices[:, :3, 2], len(frames)
+        rotations = matrices[:, :3, :3]
+        translations = matrices[:, :3, 3]
+        # Les matrices stockées sont monde->caméra (convention utilisée dans tout le
+        # projet) : le centre caméra dans le monde est -R^T @ t, pas t directement, et
+        # la direction de visée dans le monde est R^T @ [0,0,1] (la 3e ligne de R, pas
+        # la 3e colonne).
+        positions = -np.einsum("nij,nj->ni", rotations.transpose(0, 2, 1), translations)
+        forwards = rotations[:, 2, :]
+        return positions, forwards, len(frames)
 
     def _preview_tracking_file(self, path, notify_errors=True):
         if not path:

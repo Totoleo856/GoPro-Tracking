@@ -22,14 +22,20 @@ class DualTracker:
     caméra cinéma.
     """
 
-    def __init__(self, video1, calibration1, video2, calibration2, mode="sfm"):
+    def __init__(
+        self, video1, calibration1, video2, calibration2, mode="sfm",
+        num_threads=None, max_num_features=None,
+    ):
         self.video1 = video1
         self.calibration1 = calibration1
         self.video2 = video2
         self.calibration2 = calibration2
-        tracker_class = SfmTracker if mode == "sfm" else Tracker
-        self.tracker1 = tracker_class(video1, calibration1)
-        self.tracker2 = tracker_class(video2, calibration2)
+        if mode == "sfm":
+            self.tracker1 = SfmTracker(video1, calibration1, num_threads=num_threads, max_num_features=max_num_features)
+            self.tracker2 = SfmTracker(video2, calibration2, num_threads=num_threads, max_num_features=max_num_features)
+        else:
+            self.tracker1 = Tracker(video1, calibration1)
+            self.tracker2 = Tracker(video2, calibration2)
 
     def _cinema_fps(self):
         with open(self.calibration1, "r", encoding="utf-8") as file:

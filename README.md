@@ -1,6 +1,6 @@
 # GoPro Cinema Camera Tracker
 
-Version actuelle : **1.3.1** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
+Version actuelle : **1.4.0** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
 
 ## Vision du projet
 
