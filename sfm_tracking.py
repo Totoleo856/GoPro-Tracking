@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -49,6 +51,30 @@ class SfmTracker:
         # Charuco déjà implémentés par Tracker, sans dupliquer ce code.
         self._helper = Tracker(video, calibration_file)
 
+    def _check_disk_space(self, sample_frame_path, total_frames, image_dir):
+        """
+        Chaque frame de la vidéo est extraite en PNG plein format sur le disque avant
+        d'être passée à COLMAP : pour une prise longue en haute résolution, ça peut
+        représenter des dizaines de Go. On estime la taille totale à partir d'une
+        vraie frame déjà extraite, et on arrête proprement avant de saturer le disque
+        (ce qui peut lui aussi geler la machine) plutôt que de le découvrir en cours
+        de route.
+        """
+        if total_frames <= 0:
+            return
+        sample_size = sample_frame_path.stat().st_size
+        estimated_bytes = sample_size * total_frames
+        free_bytes = shutil.disk_usage(image_dir).free
+        safety_margin = 1.15
+        if estimated_bytes * safety_margin > free_bytes:
+            estimated_gb = estimated_bytes / (1024 ** 3)
+            free_gb = free_bytes / (1024 ** 3)
+            raise RuntimeError(
+                f"Espace disque insuffisant pour extraire les {total_frames} frames de "
+                f"cette vidéo : ~{estimated_gb:.1f} Go nécessaires, {free_gb:.1f} Go "
+                "disponibles. Libérez de l'espace disque avant de relancer le tracking."
+            )
+
     def _extract_frames(self, image_dir, progress_callback):
         capture = cv2.VideoCapture(str(self.video))
         if not capture.isOpened():
@@ -59,6 +85,7 @@ class SfmTracker:
 
         frame_paths = {}
         index = 0
+        disk_space_checked = False
         while True:
             ok, frame = capture.read()
             if not ok:
@@ -66,6 +93,10 @@ class SfmTracker:
             path = image_dir / f"frame_{index:06d}.png"
             cv2.imwrite(str(path), frame)
             frame_paths[index] = path
+
+            if not disk_space_checked:
+                disk_space_checked = True
+                self._check_disk_space(path, total_frames, image_dir)
 
             if progress_callback:
                 if total_frames > 0:
@@ -81,7 +112,20 @@ class SfmTracker:
             raise RuntimeError("Aucune frame n'a pu être extraite de la vidéo.")
         return frame_paths, fps
 
+    def _colmap_thread_count(self):
+        """
+        COLMAP prend tous les cœurs disponibles par défaut (num_threads=-1), ce qui peut
+        saturer entièrement la machine et la rendre totalement inréactive le temps du
+        calcul (perçu comme un plantage) sur une machine grand public. On laisse
+        volontairement 2 cœurs de libre pour le système — ça ne change rien à la
+        précision du calcul, juste à sa durée.
+        """
+        cpu_count = os.cpu_count() or 4
+        return max(1, cpu_count - 2)
+
     def _run_colmap(self, image_dir, frame_paths, progress_callback):
+        num_threads = self._colmap_thread_count()
+
         with tempfile.TemporaryDirectory(prefix="colmap_db_") as db_dir:
             database_path = Path(db_dir) / "database.db"
             sparse_path = Path(db_dir) / "sparse"
@@ -89,11 +133,18 @@ class SfmTracker:
 
             if progress_callback:
                 progress_callback(15, "Extraction des features (COLMAP)...")
-            pycolmap.extract_features(database_path, image_dir)
+            pycolmap.extract_features(
+                database_path, image_dir,
+                extraction_options=pycolmap.FeatureExtractionOptions(num_threads=num_threads),
+            )
 
             if progress_callback:
                 progress_callback(30, "Appariement des frames (COLMAP)...")
-            pycolmap.match_sequential(database_path)
+            pycolmap.match_sequential(
+                database_path,
+                matching_options=pycolmap.FeatureMatchingOptions(num_threads=num_threads),
+                pairing_options=pycolmap.SequentialPairingOptions(num_threads=num_threads),
+            )
 
             if progress_callback:
                 progress_callback(45, "Reconstruction SfM (COLMAP)...")
@@ -109,6 +160,7 @@ class SfmTracker:
 
             reconstructions = pycolmap.incremental_mapping(
                 database_path, image_dir, sparse_path,
+                options=pycolmap.IncrementalPipelineOptions(num_threads=num_threads),
                 next_image_callback=on_next_image,
             )
 

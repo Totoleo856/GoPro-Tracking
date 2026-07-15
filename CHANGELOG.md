@@ -7,6 +7,19 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.2.2] - 2026-07-15
+
+### Corrigé
+- Calibration : le message d'erreur en cas d'échec de détection Charuco précise désormais
+  quelle vidéo (GoPro ou caméra cinéma) est en cause et pourquoi (aucun coin détecté,
+  contraste insuffisant, ou résolution/capteur incohérents) au lieu d'un message générique.
+- Tracking SfM : le calcul COLMAP (extraction de features, matching, reconstruction) pouvait
+  saturer entièrement le CPU et geler la machine sur un poste grand public. Les threads
+  COLMAP sont désormais plafonnés (2 cœurs laissés au système), et l'espace disque
+  disponible est vérifié avant l'extraction complète des frames (chaque frame étant
+  sauvegardée en PNG plein format) pour échouer proprement plutôt que de saturer le disque.
+  Aucun changement sur la précision : toujours résolution native, toutes les frames traitées.
+
 ## [1.2.1] - 2026-07-14
 
 ### Modifié

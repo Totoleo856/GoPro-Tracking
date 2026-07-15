@@ -146,23 +146,29 @@ class Calibration:
         detector = cv2.aruco.CharucoDetector(board)
         dist_coeffs = np.zeros((5, 1), dtype=np.float64)
 
+        diagnostics = {"frames_analyzed": 0, "max_corners": 0, "pose_attempts": 0}
+
         max_frames = 60
         start, end = progress_range
         for frame_index in range(max_frames):
             ok, frame = capture.read()
             if not ok:
                 break
+            diagnostics["frames_analyzed"] += 1
             if progress_callback:
                 pct = start + (end - start) * (frame_index + 1) / max_frames
                 progress_callback(int(pct), f"Analyse de la vidéo ({frame_index + 1}/{max_frames})")
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             charuco_corners, charuco_ids, _, _ = detector.detectBoard(gray)
-            if charuco_ids is None or len(charuco_ids) < 4:
+            num_corners = 0 if charuco_ids is None else len(charuco_ids)
+            diagnostics["max_corners"] = max(diagnostics["max_corners"], num_corners)
+            if num_corners < 4:
                 continue
 
             rvec = np.zeros((3, 1), dtype=np.float64)
             tvec = np.zeros((3, 1), dtype=np.float64)
+            diagnostics["pose_attempts"] += 1
             retval, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
                 charuco_corners, charuco_ids, board, camera_matrix, dist_coeffs, rvec, tvec
             )
@@ -172,10 +178,32 @@ class Calibration:
                 capture.release()
                 if progress_callback:
                     progress_callback(int(end), "Pose Charuco détectée")
-                return Pose(rotation=rotation_matrix, translation=translation)
+                return Pose(rotation=rotation_matrix, translation=translation), diagnostics
 
         capture.release()
-        return None
+        return None, diagnostics
+
+    def _describe_charuco_failure(self, label: str, diagnostics: dict) -> str:
+        frames = diagnostics["frames_analyzed"]
+        max_corners = diagnostics["max_corners"]
+        if frames == 0:
+            return f"{label} : la vidéo ne contient aucune frame lisible."
+        if max_corners == 0:
+            return (
+                f"{label} : aucun coin Charuco détecté sur {frames} frames analysées "
+                "(dictionnaire ArUco incorrect, ou planche absente du champ sur cette vidéo ?)."
+            )
+        if max_corners < 4:
+            return (
+                f"{label} : au mieux {max_corners} coin(s) détecté(s) sur {frames} frames "
+                "analysées (il en faut au moins 4) — probablement un contraste insuffisant "
+                "(image plate/log non gradée ?) ou la planche partiellement hors champ."
+            )
+        return (
+            f"{label} : des coins Charuco ont été détectés (jusqu'à {max_corners}) mais "
+            "l'estimation de pose a échoué à chaque tentative — vérifiez que la résolution "
+            "et le capteur renseignés dans le profil correspondent bien à cette vidéo."
+        )
 
     def compute(self, output_path: str, progress_callback=None):
         if cv2 is None or np is None or not hasattr(cv2, "aruco"):
@@ -198,11 +226,16 @@ class Calibration:
         gopro_matrix = self._camera_matrix_for(self.gopro_camera)
         cinema_matrix = self._camera_matrix_for(self.cinema_camera)
 
-        gopro_pose = self._detect_charuco_pose(self.gopro_video, gopro_matrix, progress_callback, (5, 50))
-        cinema_pose = self._detect_charuco_pose(self.cinema_video, cinema_matrix, progress_callback, (50, 95))
+        gopro_pose, gopro_diag = self._detect_charuco_pose(self.gopro_video, gopro_matrix, progress_callback, (5, 50))
+        cinema_pose, cinema_diag = self._detect_charuco_pose(self.cinema_video, cinema_matrix, progress_callback, (50, 95))
 
         if gopro_pose is None or cinema_pose is None:
-            raise RuntimeError("Impossible d'extraire la pose Charuco sur l'une des vidéos.")
+            failures = []
+            if gopro_pose is None:
+                failures.append(self._describe_charuco_failure("Vidéo GoPro", gopro_diag))
+            if cinema_pose is None:
+                failures.append(self._describe_charuco_failure("Vidéo caméra cinéma", cinema_diag))
+            raise RuntimeError("Impossible d'extraire la pose Charuco :\n" + "\n".join(failures))
 
         if progress_callback:
             progress_callback(95, "Calcul de la transformation du rig...")
