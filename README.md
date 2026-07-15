@@ -1,6 +1,6 @@
 # GoPro Cinema Camera Tracker
 
-Version actuelle : **1.2.2** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
+Version actuelle : **1.3.0** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
 
 ## Vision du projet
 
@@ -90,12 +90,34 @@ L'objectif est de fournir une application autonome capable de gérer l'ensemble 
 
 ## Installation
 
+Python 3.10 ou plus récent est requis (contrainte de `pycolmap`).
+
+### Avec conda (recommandé — environnement isolé, versions figées)
+
+```bash
+conda env create -f environment.yml
+conda activate gopro-tracking
+python main.py
+```
+
+Pour mettre à jour un environnement déjà créé après un changement du fichier `environment.yml` :
+
+```bash
+conda env update -f environment.yml --prune
+```
+
+### Avec pip
+
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
+---
+
 Le tracking par Structure-from-Motion (voir plus bas) s'appuie sur [COLMAP](https://colmap.github.io/) via son binding Python `pycolmap` (licence BSD, usage commercial autorisé), installé automatiquement avec les dépendances ci-dessus — aucune installation séparée de COLMAP n'est nécessaire.
+
+Les presets (`profiles/`) et les fichiers de tracking générés (`data/`) ne sont pas versionnés (`.gitignore`) : sur une nouvelle machine, il faut recréer les presets ou copier manuellement le dossier `profiles/` depuis une installation existante.
 
 ---
 

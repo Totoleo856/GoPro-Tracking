@@ -7,6 +7,14 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.3.0] - 2026-07-15
+
+### Ajouté
+- `environment.yml` : environnement conda avec Python et versions des dépendances figées,
+  pour reproduire l'environnement de développement sur une nouvelle machine.
+- Section Installation du README complétée (méthode conda recommandée, méthode pip en
+  alternative, prérequis Python 3.10+, note sur les presets/`profiles/` non versionnés).
+
 ## [1.2.2] - 2026-07-15
 
 ### Corrigé
