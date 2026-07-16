@@ -7,7 +7,16 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
-## [1.4.0] - 2026-07-15
+## [1.5.0] - 2026-07-16
+
+### Ajouté
+- Onglet Vérification : l'aperçu 3D affiche désormais un petit schéma de caméra (frustum
+  filaire) à chaque point échantillonné de la trajectoire, à la place de simples flèches,
+  ainsi que la board Charuco dessinée à sa taille et sa position réelles (damier), à partir
+  d'un nouveau champ optionnel "Calibration" permettant de sélectionner le fichier de
+  calibration utilisé pour ce tracking.
+
+
 
 ### Ajouté
 - Onglet Tracking : threads COLMAP et nombre max de points par image (2048/4096/8192)

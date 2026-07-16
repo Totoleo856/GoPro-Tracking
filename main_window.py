@@ -38,6 +38,7 @@ try:
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from matplotlib.figure import Figure
     import mpl_toolkits.mplot3d  # noqa: F401  (registers the 3d projection)
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 except ImportError:
     FigureCanvasQTAgg = None
     Figure = None
@@ -523,7 +524,30 @@ class MainWindow(QMainWindow):
         self._decorate_empty_axes(ax, message)
         self.verification_canvas.draw()
 
-    def _plot_trajectory(self, positions, forwards):
+    def _draw_charuco_board(self, ax, board):
+        """
+        Dessine la board Charuco sous forme de damier à sa taille réelle (mètres),
+        dans le plan Z=0 : c'est le plan et l'origine du repère monde (la pose
+        Charuco définit ce repère), donc la board se dessine directement à partir
+        de (0, 0, 0) sans transformation supplémentaire.
+        """
+        squares_x = int(board["squares_x"])
+        squares_y = int(board["squares_y"])
+        size = float(board["square_length"])
+        light, dark = "#c9cdd3", "#3a3d42"
+        quads, colors = [], []
+        for row in range(squares_y):
+            for col in range(squares_x):
+                x0, y0 = col * size, row * size
+                quads.append([
+                    (x0, y0, 0.0), (x0 + size, y0, 0.0),
+                    (x0 + size, y0 + size, 0.0), (x0, y0 + size, 0.0),
+                ])
+                colors.append(light if (row + col) % 2 == 0 else dark)
+        board_collection = Poly3DCollection(quads, facecolors=colors, edgecolors="#5b8def", linewidths=0.3, alpha=0.9)
+        ax.add_collection3d(board_collection)
+
+    def _plot_trajectory(self, positions, rotations, board=None):
         if self.verification_canvas is None:
             return
         ax = self.verification_axes
@@ -531,20 +555,44 @@ class MainWindow(QMainWindow):
         self._style_3d_axes(ax)
         self._decorate_empty_axes(ax)
 
+        if board is not None:
+            self._draw_charuco_board(ax, board)
+
         ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], color="#5b8def", linewidth=2, label="Trajectoire")
         ax.scatter(*positions[0], color="#4caf50", s=45, label="Départ", depthshade=False)
         ax.scatter(*positions[-1], color="#e05252", s=45, label="Fin", depthshade=False)
 
-        half_range = self._set_axes_equal(ax, positions)
+        bounds_points = positions
+        if board is not None:
+            board_width = board["squares_x"] * board["square_length"]
+            board_height = board["squares_y"] * board["square_length"]
+            bounds_points = np.vstack([positions, [[0.0, 0.0, 0.0], [board_width, board_height, 0.0]]])
+        half_range = self._set_axes_equal(ax, bounds_points)
+
+        # Axes caméra dans le monde (convention monde->caméra, cf. _load_tracking_positions) :
+        # droite/bas/avant sont les lignes de R, "haut" est l'opposé de la ligne "bas".
+        rights = rotations[:, 0, :]
+        ups = -rotations[:, 1, :]
+        forwards = rotations[:, 2, :]
 
         step = max(1, len(positions) // 25)
         indices = np.arange(0, len(positions), step)
-        arrow_length = half_range * 0.15
-        ax.quiver(
-            positions[indices, 0], positions[indices, 1], positions[indices, 2],
-            forwards[indices, 0], forwards[indices, 1], forwards[indices, 2],
-            length=arrow_length, normalize=True, color="#8fb4ec", linewidth=1, arrow_length_ratio=0.35,
-        )
+        depth = half_range * 0.12
+        half_w = depth * 0.55
+        half_h = depth * 0.38
+        segments = []
+        for i in indices:
+            apex = positions[i]
+            center = apex + forwards[i] * depth
+            c1 = center + rights[i] * half_w + ups[i] * half_h
+            c2 = center - rights[i] * half_w + ups[i] * half_h
+            c3 = center - rights[i] * half_w - ups[i] * half_h
+            c4 = center + rights[i] * half_w - ups[i] * half_h
+            segments.extend([
+                (apex, c1), (apex, c2), (apex, c3), (apex, c4),
+                (c1, c2), (c2, c3), (c3, c4), (c4, c1),
+            ])
+        ax.add_collection3d(Line3DCollection(segments, colors="#8fb4ec", linewidths=1))
 
         axis_length = half_range * 0.2
         ax.quiver(0, 0, 0, 1, 0, 0, length=axis_length, color="#e05252")
@@ -1262,6 +1310,14 @@ class MainWindow(QMainWindow):
             on_selected=self._auto_preview_tracking,
         ))
 
+        self.verification_calibration_file = QLineEdit()
+        self.verification_calibration_file.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        form.addRow("Calibration (optionnel)", self.create_file_row(
+            self.verification_calibration_file, "Parcourir", "Calibration (*.json);;Tous les fichiers (*)",
+            on_selected=self._auto_preview_calibration,
+        ))
+
         inner_layout.addWidget(result_group)
         inner_layout.addStretch()
 
@@ -1329,25 +1385,52 @@ class MainWindow(QMainWindow):
         translations = matrices[:, :3, 3]
         # Les matrices stockées sont monde->caméra (convention utilisée dans tout le
         # projet) : le centre caméra dans le monde est -R^T @ t, pas t directement, et
-        # la direction de visée dans le monde est R^T @ [0,0,1] (la 3e ligne de R, pas
-        # la 3e colonne).
+        # les axes caméra (droite/bas/avant) dans le monde sont les lignes de R, pas ses
+        # colonnes (cf. _plot_trajectory pour leur usage).
         positions = -np.einsum("nij,nj->ni", rotations.transpose(0, 2, 1), translations)
-        forwards = rotations[:, 2, :]
-        return positions, forwards, len(frames)
+        return positions, rotations, len(frames)
+
+    def _load_charuco_board(self, path):
+        path = Path(path)
+        if path.suffix.lower() != ".json":
+            raise ValueError("Le fichier de calibration doit être un .json.")
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        board = data.get("charuco_board")
+        if not board:
+            raise ValueError("Ce fichier de calibration ne contient pas de section \"charuco_board\".")
+        return {
+            "squares_x": int(board["squares_x"]),
+            "squares_y": int(board["squares_y"]),
+            "square_length": float(board["square_length"]),
+        }
 
     def _preview_tracking_file(self, path, notify_errors=True):
         if not path:
             return False
 
         try:
-            positions, forwards, frame_count = self._load_tracking_positions(path)
+            positions, rotations, frame_count = self._load_tracking_positions(path)
         except Exception as exc:
             if notify_errors:
                 QMessageBox.critical(self, "Erreur de lecture", f"Impossible de lire le fichier de tracking :\n{exc}")
             return False
 
+        board = None
+        calibration_path = self.verification_calibration_file.text()
+        if calibration_path:
+            try:
+                board = self._load_charuco_board(calibration_path)
+            except Exception as exc:
+                if notify_errors:
+                    QMessageBox.warning(
+                        self, "Erreur de lecture",
+                        f"Impossible de lire la board Charuco depuis ce fichier de calibration :\n{exc}",
+                    )
+                board = None
+
         if self.verification_canvas is not None:
-            self._plot_trajectory(positions, forwards)
+            self._plot_trajectory(positions, rotations, board)
             self._set_progress(
                 self.verification_progress, self.verification_status, 100,
                 f"{frame_count} poses chargées",
@@ -1361,6 +1444,9 @@ class MainWindow(QMainWindow):
 
     def _auto_preview_tracking(self, path):
         self._preview_tracking_file(path, notify_errors=True)
+
+    def _auto_preview_calibration(self, _calibration_path):
+        self._preview_tracking_file(self.tracking_result_file.text(), notify_errors=True)
 
     def run_export(self):
         result_path = self.tracking_result_file.text()
