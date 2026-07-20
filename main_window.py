@@ -135,6 +135,11 @@ QLabel#statusLabel {
     font-size: 9pt;
 }
 
+QLabel#subsectionLabel {
+    color: #8fb4ec;
+    font-weight: 600;
+}
+
 QLineEdit, QComboBox {
     background-color: #2b2d31;
     border: 1px solid #3d3f45;
@@ -471,18 +476,31 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(combo)
         layout.addWidget(add_button)
+
+        if not hasattr(self, "_profile_combos"):
+            self._profile_combos = {}
+        self._profile_combos[kind] = combo
+
         return container
+
+    def _select_profile_in_combo(self, kind, name):
+        combo = self._profile_combos.get(kind)
+        if combo is None:
+            return
+        index = combo.findText(name)
+        if index >= 0:
+            combo.setCurrentIndex(index)
 
     # ------------------------------------------------------------------
     # Aperçu 3D de la trajectoire
     # ------------------------------------------------------------------
-    def _style_3d_axes(self, ax):
+    def _style_3d_axes(self, ax, figure):
         background = "#202124"
         panel = "#26272b"
         grid_color = (0.20, 0.21, 0.23, 1)
         text_color = "#c7c9cc"
 
-        self.verification_figure.patch.set_facecolor(background)
+        figure.patch.set_facecolor(background)
         ax.set_facecolor(background)
         for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
             axis.pane.set_facecolor(panel)
@@ -492,12 +510,12 @@ class MainWindow(QMainWindow):
         ax.tick_params(colors=text_color)
         ax.title.set_color("#eaecee")
 
-    def _set_axes_equal(self, ax, positions):
+    def _set_axes_equal(self, ax, positions, min_half_range=0.1):
         mins = positions.min(axis=0)
         maxs = positions.max(axis=0)
         mins = np.minimum(mins, 0.0)
         maxs = np.maximum(maxs, 0.0)
-        half_range = max((maxs - mins).max() / 2.0, 0.1)
+        half_range = max((maxs - mins).max() / 2.0, min_half_range)
         center = (maxs + mins) / 2.0
         ax.set_xlim(center[0] - half_range, center[0] + half_range)
         ax.set_ylim(center[1] - half_range, center[1] + half_range)
@@ -520,9 +538,20 @@ class MainWindow(QMainWindow):
             return
         ax = self.verification_axes
         ax.clear()
-        self._style_3d_axes(ax)
+        self._style_3d_axes(ax, self.verification_figure)
         self._decorate_empty_axes(ax, message)
         self.verification_canvas.draw()
+
+    def _camera_frustum_segments(self, position, rights, ups, forwards, depth, half_w, half_h):
+        center = position + forwards * depth
+        c1 = center + rights * half_w + ups * half_h
+        c2 = center - rights * half_w + ups * half_h
+        c3 = center - rights * half_w - ups * half_h
+        c4 = center + rights * half_w - ups * half_h
+        return [
+            (position, c1), (position, c2), (position, c3), (position, c4),
+            (c1, c2), (c2, c3), (c3, c4), (c4, c1),
+        ]
 
     def _draw_charuco_board(self, ax, board):
         """
@@ -552,7 +581,7 @@ class MainWindow(QMainWindow):
             return
         ax = self.verification_axes
         ax.clear()
-        self._style_3d_axes(ax)
+        self._style_3d_axes(ax, self.verification_figure)
         self._decorate_empty_axes(ax)
 
         if board is not None:
@@ -582,16 +611,9 @@ class MainWindow(QMainWindow):
         half_h = depth * 0.38
         segments = []
         for i in indices:
-            apex = positions[i]
-            center = apex + forwards[i] * depth
-            c1 = center + rights[i] * half_w + ups[i] * half_h
-            c2 = center - rights[i] * half_w + ups[i] * half_h
-            c3 = center - rights[i] * half_w - ups[i] * half_h
-            c4 = center + rights[i] * half_w - ups[i] * half_h
-            segments.extend([
-                (apex, c1), (apex, c2), (apex, c3), (apex, c4),
-                (c1, c2), (c2, c3), (c3, c4), (c4, c1),
-            ])
+            segments.extend(self._camera_frustum_segments(
+                positions[i], rights[i], ups[i], forwards[i], depth, half_w, half_h
+            ))
         ax.add_collection3d(Line3DCollection(segments, colors="#8fb4ec", linewidths=1))
 
         axis_length = half_range * 0.2
@@ -602,6 +624,102 @@ class MainWindow(QMainWindow):
 
         ax.legend(facecolor="#26272b", labelcolor="#c7c9cc", edgecolor="#34363b", loc="upper right", fontsize=8)
         self.verification_canvas.draw()
+
+    # ------------------------------------------------------------------
+    # Aperçu du rig (offset GoPro / caméra cinéma)
+    # ------------------------------------------------------------------
+    def _reset_rig_plot(self, message=""):
+        if self.rig_canvas is None:
+            return
+        ax = self.rig_axes
+        ax.clear()
+        self._style_3d_axes(ax, self.rig_figure)
+        ax.set_xlabel("X (m)")
+        ax.set_ylabel("Y (m)")
+        ax.set_zlabel("Z (m)")
+        ax.set_title("Rig GoPro / caméra cinéma")
+        if message:
+            ax.text2D(
+                0.5, 0.5, message, transform=ax.transAxes,
+                ha="center", va="center", color="#8a8f98", fontsize=8, wrap=True,
+            )
+        self.rig_canvas.draw()
+
+    def _plot_rig(self, gopro_rotation, gopro_translation):
+        if self.rig_canvas is None:
+            return
+        ax = self.rig_axes
+        ax.clear()
+        self._style_3d_axes(ax, self.rig_figure)
+        ax.set_xlabel("X (m)")
+        ax.set_ylabel("Y (m)")
+        ax.set_zlabel("Z (m)")
+        ax.set_title("Rig GoPro / caméra cinéma")
+
+        positions = np.array([[0.0, 0.0, 0.0], gopro_translation])
+        half_range = self._set_axes_equal(ax, positions, min_half_range=0.05)
+
+        depth = half_range * 0.4
+        half_w = depth * 0.55
+        half_h = depth * 0.38
+
+        # Caméra cinéma : origine de ce repère, orientation identité.
+        cinema_segments = self._camera_frustum_segments(
+            np.zeros(3), np.array([1.0, 0.0, 0.0]), np.array([0.0, -1.0, 0.0]), np.array([0.0, 0.0, 1.0]),
+            depth, half_w, half_h,
+        )
+        ax.add_collection3d(Line3DCollection(cinema_segments, colors="#e05252", linewidths=1.5))
+        ax.scatter(0, 0, 0, color="#e05252", s=45, label="Caméra cinéma", depthshade=False)
+
+        # GoPro : rig_transform est déjà l'équivalent d'une pose "caméra->monde" où le
+        # "monde" est ici le repère de la caméra cinéma (cf. investigation calibration) :
+        # la position est directement rig_transform.translation, et les axes locaux de
+        # la GoPro dans ce repère sont les COLONNES (pas les lignes) de sa rotation.
+        gopro_rights = gopro_rotation[:, 0]
+        gopro_ups = -gopro_rotation[:, 1]
+        gopro_forwards = gopro_rotation[:, 2]
+        gopro_segments = self._camera_frustum_segments(
+            gopro_translation, gopro_rights, gopro_ups, gopro_forwards, depth, half_w, half_h,
+        )
+        ax.add_collection3d(Line3DCollection(gopro_segments, colors="#8fb4ec", linewidths=1.5))
+        ax.scatter(*gopro_translation, color="#8fb4ec", s=45, label="GoPro", depthshade=False)
+
+        ax.plot(
+            [0.0, gopro_translation[0]], [0.0, gopro_translation[1]], [0.0, gopro_translation[2]],
+            color="#5b8def", linestyle="--", linewidth=1,
+        )
+        distance_cm = float(np.linalg.norm(gopro_translation)) * 100.0
+        midpoint = gopro_translation / 2.0
+        ax.text(midpoint[0], midpoint[1], midpoint[2], f"{distance_cm:.1f} cm", color="#c7c9cc", fontsize=8)
+
+        ax.legend(facecolor="#26272b", labelcolor="#c7c9cc", edgecolor="#34363b", loc="upper right", fontsize=8)
+        self.rig_canvas.draw()
+
+    def _preview_calibration_rig(self, path):
+        if not path:
+            self._reset_rig_plot("Sélectionnez un fichier de calibration pour afficher le rig")
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                data = json.load(file)
+            rig_transform = data["rig_transform"]
+            rotation = np.array(rig_transform["rotation_matrix"], dtype=np.float64)
+            translation = np.array(
+                [
+                    rig_transform["translation"]["x"],
+                    rig_transform["translation"]["y"],
+                    rig_transform["translation"]["z"],
+                ],
+                dtype=np.float64,
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Erreur de lecture",
+                f"Impossible de lire le rig depuis ce fichier de calibration :\n{exc}",
+            )
+            self._reset_rig_plot("Fichier de calibration invalide")
+            return
+        self._plot_rig(rotation, translation)
 
     # ------------------------------------------------------------------
     # Onglet Calibration
@@ -745,10 +863,14 @@ class MainWindow(QMainWindow):
             self.gopro_calibration_video, "Parcourir", "Vidéos (*.mp4 *.mov *.avi);;Tous les fichiers (*)"
         ))
 
-        # -- Groupe : Profil GoPro --
-        gopro_camera_group = QGroupBox("Profil GoPro")
-        gopro_camera_layout = QVBoxLayout(gopro_camera_group)
-        gopro_camera_layout.setSpacing(10)
+        # -- Groupe : Configuration (Profils GoPro + Caméra cinéma) --
+        config_group = QGroupBox("Configuration")
+        config_group_layout = QVBoxLayout(config_group)
+        config_group_layout.setSpacing(10)
+
+        gopro_label = QLabel("Profil GoPro")
+        gopro_label.setObjectName("subsectionLabel")
+        config_group_layout.addWidget(gopro_label)
 
         gopro_form = QFormLayout()
         gopro_form.setHorizontalSpacing(14)
@@ -779,15 +901,17 @@ class MainWindow(QMainWindow):
         gopro_form.addRow("Résolution (px)", gopro_resolution_widget)
         gopro_form.addRow("FPS", self.gopro_fps)
 
-        gopro_camera_layout.addWidget(self._create_profile_bar(
+        config_group_layout.addWidget(self._create_profile_bar(
             "gopro", self._load_gopro_profile, self._capture_gopro_profile, gopro_form,
             name_field=self.gopro_model, dialog_title="Ajouter un profil GoPro",
         ))
 
-        # -- Groupe : Profil Caméra cinéma --
-        camera_group = QGroupBox("Profil Caméra cinéma")
-        camera_group_layout = QVBoxLayout(camera_group)
-        camera_group_layout.setSpacing(10)
+        # -- Sous-section : Profil Caméra cinéma (même groupe "Configuration") --
+        config_group_layout.addWidget(self.create_separator())
+
+        camera_label = QLabel("Profil Caméra cinéma")
+        camera_label.setObjectName("subsectionLabel")
+        config_group_layout.addWidget(camera_label)
 
         camera_form = QFormLayout()
         camera_form.setHorizontalSpacing(14)
@@ -818,7 +942,7 @@ class MainWindow(QMainWindow):
         camera_form.addRow("Résolution (px)", resolution_widget)
         camera_form.addRow("FPS", self.cinema_fps)
 
-        camera_group_layout.addWidget(self._create_profile_bar(
+        config_group_layout.addWidget(self._create_profile_bar(
             "camera", self._load_camera_profile, self._capture_camera_profile, camera_form,
             name_field=self.cinema_model, dialog_title="Ajouter un profil Caméra cinéma",
         ))
@@ -864,8 +988,7 @@ class MainWindow(QMainWindow):
 
         inner_layout.addWidget(rig_group)
         inner_layout.addWidget(videos_group)
-        inner_layout.addWidget(gopro_camera_group)
-        inner_layout.addWidget(camera_group)
+        inner_layout.addWidget(config_group)
         inner_layout.addWidget(board_group)
         inner_layout.addStretch()
 
@@ -905,14 +1028,25 @@ class MainWindow(QMainWindow):
             self.offset_forward.setText(str(data["offset_forward"]))
         if "offset_left" in data:
             self.offset_left.setText(str(data["offset_left"]))
+        if data.get("gopro_profile"):
+            self._select_profile_in_combo("gopro", data["gopro_profile"])
+        if data.get("camera_profile"):
+            self._select_profile_in_combo("camera", data["camera_profile"])
 
     def _capture_rig_profile(self):
-        return {
+        data = {
             "rig_name": self.rig_name.text(),
             "offset_up": float(self.offset_up.text()),
             "offset_forward": float(self.offset_forward.text()),
             "offset_left": float(self.offset_left.text()),
         }
+        gopro_combo = self._profile_combos.get("gopro")
+        if gopro_combo is not None and gopro_combo.currentIndex() > 0:
+            data["gopro_profile"] = gopro_combo.currentText()
+        camera_combo = self._profile_combos.get("camera")
+        if camera_combo is not None and camera_combo.currentIndex() > 0:
+            data["camera_profile"] = camera_combo.currentText()
+        return data
 
     def _load_gopro_profile(self, data):
         if "model" in data:
@@ -942,6 +1076,8 @@ class MainWindow(QMainWindow):
             self.cinema_model.setText(str(data["model"]))
         if "sensor_width" in data:
             self.cinema_sensor_size.setText(str(data["sensor_width"]))
+        if "focal_length" in data:
+            self.cinema_focal_length.setText(str(data["focal_length"]))
         resolution = data.get("resolution")
         if resolution:
             self.cinema_resolution_x.setText(str(resolution[0]))
@@ -953,6 +1089,7 @@ class MainWindow(QMainWindow):
         return {
             "model": self.cinema_model.text(),
             "sensor_width": float(self.cinema_sensor_size.text()),
+            "focal_length": float(self.cinema_focal_length.text()),
             "resolution": [int(self.cinema_resolution_x.text()), int(self.cinema_resolution_y.text())],
             "fps": float(fps_text) if fps_text else 0.0,
         }
@@ -1324,6 +1461,32 @@ class MainWindow(QMainWindow):
         scroll_area = self.create_scroll_area(inner)
         content_layout.addWidget(scroll_area, 0)
 
+        viewers_row = QWidget()
+        viewers_row_layout = QHBoxLayout(viewers_row)
+        viewers_row_layout.setContentsMargins(0, 0, 0, 0)
+        viewers_row_layout.setSpacing(10)
+
+        rig_group = QGroupBox("Aperçu du rig (GoPro / caméra cinéma)")
+        rig_group_layout = QVBoxLayout(rig_group)
+        rig_group_layout.setContentsMargins(10, 10, 10, 10)
+
+        if FigureCanvasQTAgg is not None:
+            self.rig_figure = Figure(figsize=(3, 3))
+            self.rig_canvas = FigureCanvasQTAgg(self.rig_figure)
+            self.rig_canvas.setMinimumHeight(300)
+            self.rig_axes = self.rig_figure.add_subplot(111, projection="3d")
+            self._reset_rig_plot("Sélectionnez un fichier de calibration pour afficher le rig")
+            rig_group_layout.addWidget(self.rig_canvas)
+        else:
+            self.rig_canvas = None
+            rig_placeholder = QLabel(
+                "Aperçu du rig indisponible : installez matplotlib (pip install matplotlib)."
+            )
+            rig_placeholder.setWordWrap(True)
+            rig_group_layout.addWidget(rig_placeholder)
+
+        viewers_row_layout.addWidget(rig_group, 1)
+
         viewer_group = QGroupBox("Aperçu 3D de la trajectoire")
         viewer_layout = QVBoxLayout(viewer_group)
         viewer_layout.setContentsMargins(10, 10, 10, 10)
@@ -1343,7 +1506,9 @@ class MainWindow(QMainWindow):
             placeholder.setWordWrap(True)
             viewer_layout.addWidget(placeholder)
 
-        content_layout.addWidget(viewer_group, 1)
+        viewers_row_layout.addWidget(viewer_group, 2)
+
+        content_layout.addWidget(viewers_row, 1)
 
         content_layout.addWidget(self.create_separator())
 
@@ -1388,6 +1553,18 @@ class MainWindow(QMainWindow):
         # les axes caméra (droite/bas/avant) dans le monde sont les lignes de R, pas ses
         # colonnes (cf. _plot_trajectory pour leur usage).
         positions = -np.einsum("nij,nj->ni", rotations.transpose(0, 2, 1), translations)
+        # Le sens de l'axe Z du repère monde (= repère de la cible Charuco) dépend de
+        # l'orientation physique de la planche au sol au moment de la calibration, pas
+        # d'une convention fixe : selon le cas, "au-dessus du sol" peut ressortir en Z
+        # positif ou négatif. On force ici Z positif = au-dessus du sol pour l'affichage,
+        # sans toucher au fichier de tracking ni au pipeline de calcul.
+        # Important : on ne peut pas se contenter d'inverser Z seul, ça transformerait le
+        # repère droitier en repère gaucher (un miroir, pas une rotation) et inverserait
+        # au passage le sens apparent des déplacements/rotations gauche-droite. On inverse
+        # donc Z ET Y ensemble (équivalent à une rotation propre de 180° autour de X), ce
+        # qui ne change ni les distances ni le sens réel des mouvements.
+        positions[:, [1, 2]] *= -1.0
+        rotations[:, :, [1, 2]] *= -1.0
         return positions, rotations, len(frames)
 
     def _load_charuco_board(self, path):
@@ -1445,8 +1622,10 @@ class MainWindow(QMainWindow):
     def _auto_preview_tracking(self, path):
         self._preview_tracking_file(path, notify_errors=True)
 
-    def _auto_preview_calibration(self, _calibration_path):
-        self._preview_tracking_file(self.tracking_result_file.text(), notify_errors=True)
+    def _auto_preview_calibration(self, calibration_path):
+        self._preview_calibration_rig(calibration_path)
+        if self.tracking_result_file.text():
+            self._preview_tracking_file(self.tracking_result_file.text(), notify_errors=True)
 
     def run_export(self):
         result_path = self.tracking_result_file.text()

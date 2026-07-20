@@ -7,6 +7,31 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.6.0] - 2026-07-20
+
+### Ajouté
+- Onglet Calibration : sélectionner un profil de Rig charge désormais automatiquement les
+  profils GoPro et Caméra cinéma enregistrés avec lui.
+- Onglet Vérification : nouvelle visionneuse 3D à gauche de l'aperçu de trajectoire,
+  affichant un schéma simple (GoPro + caméra cinéma) positionné et orienté selon le
+  `rig_transform` du fichier de calibration sélectionné, pour vérifier au premier coup
+  d'œil que la calibration est physiquement cohérente. S'affiche dès qu'un fichier de
+  calibration est chargé, indépendamment du résultat de tracking.
+
+### Modifié
+- Onglet Calibration : les profils GoPro et Caméra cinéma sont regroupés dans un seul
+  encadré "Configuration" (au lieu de deux encadrés séparés).
+
+### Corrigé
+- Le profil Caméra cinéma ne sauvegardait/rechargeait jamais la focale (`focal_length`),
+  contrairement au profil GoPro — corrigé.
+- Aperçu 3D de la trajectoire (onglet Vérification) : le sens de l'axe Z du repère Charuco
+  dépend de l'orientation physique de la planche au sol et peut ressortir inversé (hauteur
+  caméra affichée négative). L'affichage force maintenant Z positif = au-dessus du sol,
+  via une rotation propre à 180° (Z et Y) pour ne pas inverser au passage le sens gauche-
+  droite des déplacements (un simple flip de Z seul transforme le repère droitier en
+  repère gaucher).
+
 ## [1.5.0] - 2026-07-16
 
 ### Ajouté
