@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -48,6 +47,8 @@ from calibration import Calibration
 from tracking import Tracker
 from sfm_tracking import SfmTracker
 from dual_tracking import DualTracker
+from blender_export import generate_blender_script
+from nuke_export import generate_chan_file
 from profiles import list_profiles, load_profile, save_profile
 from version import __version__
 
@@ -1743,6 +1744,137 @@ class MainWindow(QMainWindow):
         if self.tracking_result_file.text():
             self._preview_tracking_file(self.tracking_result_file.text(), notify_errors=True)
 
+    def _choose_export_format(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Exporter vers")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Logiciel de destination :"))
+
+        combo = QComboBox()
+        combo.addItem("Blender (.py)", userData="blender")
+        combo.addItem("Nuke (.chan / .nk)", userData="nuke")
+        combo.addItem("Maya (.py)", userData="maya")
+        combo.addItem("After Effects (.jsx)", userData="after_effects")
+        layout.addWidget(combo)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        cancel_button = QPushButton("Annuler")
+        cancel_button.clicked.connect(dialog.reject)
+        button_layout.addWidget(cancel_button)
+        export_button = QPushButton("Exporter")
+        export_button.setObjectName("primaryButton")
+        export_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(export_button)
+        layout.addLayout(button_layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return combo.currentData()
+
+    def _load_cinema_camera_optics(self, path):
+        path = Path(path)
+        if path.suffix.lower() != ".json":
+            raise ValueError("Le fichier de calibration doit être un .json.")
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        cinema_camera = data["camera"]["cinema_camera"]
+        focal_length = float(cinema_camera["focal_length"])
+        sensor_width = float(cinema_camera["sensor_width"])
+        return focal_length, sensor_width
+
+    def _load_export_data(self, result_path):
+        """
+        Charge la trajectoire et, si un fichier de calibration est renseigné, la focale/
+        le capteur de la caméra cinéma. Affiche lui-même les erreurs ; retourne None en
+        cas d'échec bloquant (trajectoire illisible), sinon
+        (positions, rotations, frame_indices, fps, focal_length, sensor_width) — ces deux
+        derniers valant None si aucune calibration n'est fournie ou lisible.
+        """
+        try:
+            positions, rotations, frame_indices, fps = self._load_tracking_positions(result_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur d'export", f"Impossible de lire le fichier de tracking :\n{exc}")
+            return None
+
+        focal_length = None
+        sensor_width = None
+        calibration_path = self.verification_calibration_file.text()
+        if calibration_path:
+            try:
+                focal_length, sensor_width = self._load_cinema_camera_optics(calibration_path)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self, "Erreur de lecture",
+                    "Impossible de lire la focale/le capteur de la caméra cinéma depuis ce "
+                    f"fichier de calibration (export sans focale/capteur) :\n{exc}",
+                )
+
+        return positions, rotations, frame_indices, fps, focal_length, sensor_width
+
+    def _export_to_blender(self, result_path):
+        data = self._load_export_data(result_path)
+        if data is None:
+            return
+        positions, rotations, frame_indices, fps, focal_length, sensor_width = data
+
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "Exporter vers Blender", Path(result_path).stem + "_blender.py", "Script Python (*.py)",
+        )
+        if not output_path:
+            return
+
+        try:
+            script = generate_blender_script(
+                positions, rotations, frame_indices, fps,
+                focal_length=focal_length, sensor_width=sensor_width,
+            )
+            with open(output_path, "w", encoding="utf-8") as file:
+                file.write(script)
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur d'export", str(exc))
+            return
+
+        QMessageBox.information(
+            self, "Export terminé",
+            f"Script Blender généré :\n{output_path}\n\n"
+            "Dans Blender : onglet Scripting > Open > sélectionner ce fichier > Run Script.",
+        )
+
+    def _export_to_nuke(self, result_path):
+        data = self._load_export_data(result_path)
+        if data is None:
+            return
+        positions, rotations, frame_indices, _fps, focal_length, sensor_width = data
+
+        output_path, _ = QFileDialog.getSaveFileName(
+            self, "Exporter vers Nuke", Path(result_path).stem + "_nuke.chan", "Fichier chan (*.chan)",
+        )
+        if not output_path:
+            return
+
+        try:
+            chan_content = generate_chan_file(positions, rotations, frame_indices)
+            with open(output_path, "w", encoding="utf-8") as file:
+                file.write(chan_content)
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur d'export", str(exc))
+            return
+
+        optics_note = (
+            f"Focale : {focal_length:.2f} mm — Capteur : {sensor_width:.2f} mm (à renseigner "
+            "manuellement sur le nœud Camera).\n\n"
+            if focal_length is not None and sensor_width is not None
+            else ""
+        )
+        QMessageBox.information(
+            self, "Export terminé",
+            f"Fichier .chan généré :\n{output_path}\n\n"
+            f"{optics_note}"
+            "Dans Nuke : créer un nœud Camera, clic droit sur le champ \"translate\" ou "
+            "\"rotate\" > Import chan file...",
+        )
+
     def run_export(self):
         result_path = self.tracking_result_file.text()
         if not result_path:
@@ -1752,16 +1884,16 @@ class MainWindow(QMainWindow):
         if not self._preview_tracking_file(result_path, notify_errors=True):
             return
 
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, "Exporter le fichier de tracking", Path(result_path).name, "JSON (*.json)",
-        )
-        if not output_path:
+        format_name = self._choose_export_format()
+        if format_name is None:
             return
 
-        try:
-            shutil.copyfile(result_path, output_path)
-        except Exception as exc:
-            QMessageBox.critical(self, "Erreur d'export", str(exc))
-            return
-
-        QMessageBox.information(self, "Export terminé", f"Fichier exporté :\n{output_path}")
+        if format_name == "blender":
+            self._export_to_blender(result_path)
+        elif format_name == "nuke":
+            self._export_to_nuke(result_path)
+        else:
+            QMessageBox.information(
+                self, "Bientôt disponible",
+                "L'export vers ce logiciel n'est pas encore implémenté.",
+            )

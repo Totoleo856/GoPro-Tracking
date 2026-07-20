@@ -7,6 +7,22 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.9.0] - 2026-07-20
+
+### Ajouté
+- Onglet Vérification : le bouton EXPORT ouvre une fenêtre de choix du logiciel de
+  destination (Blender, Nuke, Maya, After Effects).
+  - **Blender** : génère un script Python (`_blender.py`) à exécuter dans l'onglet
+    Scripting, qui crée une caméra animée (position + rotation par quaternions) ; focale
+    et capteur appliqués si un fichier de calibration est chargé.
+  - **Nuke** : génère un fichier `.chan` standard (`_nuke.chan`, `frame tx ty tz rx ry
+    rz`), à importer sur un nœud Camera (clic droit sur "translate"/"rotate" > Import
+    chan file...) ; focale/capteur indiqués dans le message de fin (à renseigner
+    manuellement, le format .chan ne portant que l'animation).
+  - Maya et After Effects affichent un message "bientôt disponible" pour l'instant.
+  - Le nom de fichier proposé reprend celui du tracking avec le suffixe du logiciel
+    choisi (`..._blender.py`, `..._nuke.chan`).
+
 ## [1.8.0] - 2026-07-20
 
 ### Ajouté
