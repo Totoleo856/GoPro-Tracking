@@ -1331,6 +1331,17 @@ class MainWindow(QMainWindow):
             self.calibration_file_2, "Parcourir", "JSON (*.json);;Tous les fichiers (*)"
         ))
 
+        self.gopro2_tolerance_mm = QLineEdit("30")
+        self.gopro2_tolerance_mm.setValidator(QDoubleValidator(0.0, 100000.0, 2))
+        self.set_compact_field(self.gopro2_tolerance_mm, 80)
+        self.gopro2_tolerance_mm.setToolTip(
+            "Écart de position maximum toléré entre les deux reconstructions GoPro (sur "
+            "les frames communes après synchronisation audio) avant de fusionner. Au-delà, "
+            "le tracking s'arrête avec une erreur plutôt que de fusionner un résultat "
+            "incohérent (mauvaise calibration d'un des deux rigs, mauvaise synchronisation...)."
+        )
+        gopro2_form.addRow("Tolérance de cohérence (mm)", self.gopro2_tolerance_mm)
+
         mode_group = QGroupBox("Mode de tracking")
         mode_layout = QVBoxLayout(mode_group)
         self.tracking_mode = QComboBox()
@@ -1461,9 +1472,12 @@ class MainWindow(QMainWindow):
 
         try:
             if use_gopro2:
+                tolerance_text = self.gopro2_tolerance_mm.text().strip()
+                max_position_discrepancy_mm = float(tolerance_text) if tolerance_text else 30.0
                 tracker = DualTracker(
                     capture_path, calibration_path, capture_path_2, calibration_path_2, mode,
                     num_threads=num_threads, max_num_features=max_num_features,
+                    max_position_discrepancy_mm=max_position_discrepancy_mm,
                 )
             elif mode == "sfm":
                 tracker = SfmTracker(

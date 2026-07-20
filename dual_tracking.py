@@ -24,12 +24,13 @@ class DualTracker:
 
     def __init__(
         self, video1, calibration1, video2, calibration2, mode="sfm",
-        num_threads=None, max_num_features=None,
+        num_threads=None, max_num_features=None, max_position_discrepancy_mm=30.0,
     ):
         self.video1 = video1
         self.calibration1 = calibration1
         self.video2 = video2
         self.calibration2 = calibration2
+        self.max_position_discrepancy_mm = max_position_discrepancy_mm
         if mode == "sfm":
             self.tracker1 = SfmTracker(video1, calibration1, num_threads=num_threads, max_num_features=max_num_features)
             self.tracker2 = SfmTracker(video2, calibration2, num_threads=num_threads, max_num_features=max_num_features)
@@ -58,6 +59,44 @@ class DualTracker:
             for frame in data["frames"]
         }
         return poses_by_index, fps
+
+    def _check_consistency(self, poses1_by_index, shifted_poses2_by_index, common_indices, report):
+        """
+        Les deux reconstructions sont indépendantes (calibration et éventuellement mode
+        de tracking propres à chaque GoPro) : avant de les fusionner, on vérifie qu'elles
+        s'accordent réellement sur les frames communes (après synchronisation audio),
+        plutôt que de moyenner aveuglément deux résultats incohérents (mauvais rig,
+        mauvaise synchronisation, échec de reconstruction d'un des deux flux).
+        """
+        if not common_indices:
+            raise RuntimeError(
+                "Aucune frame commune entre les deux reconstructions GoPro après la "
+                "synchronisation audio : vérifiez que le clap est bien audible et "
+                "identique sur les deux vidéos."
+            )
+
+        discrepancies_mm = [
+            float(np.linalg.norm(
+                poses1_by_index[index].inverse().translation
+                - shifted_poses2_by_index[index].inverse().translation
+            )) * 1000.0
+            for index in common_indices
+        ]
+        mean_discrepancy = float(np.mean(discrepancies_mm))
+        max_discrepancy = float(np.max(discrepancies_mm))
+        report(
+            87,
+            f"Cohérence entre les deux reconstructions ({len(common_indices)} frames "
+            f"communes) : écart moyen {mean_discrepancy:.1f} mm, max {max_discrepancy:.1f} mm",
+        )
+        if max_discrepancy > self.max_position_discrepancy_mm:
+            raise RuntimeError(
+                f"Écart de position trop important entre les deux reconstructions GoPro "
+                f"({max_discrepancy:.1f} mm sur les frames communes, tolérance réglée à "
+                f"{self.max_position_discrepancy_mm:.1f} mm) : vérifiez la calibration de "
+                "chaque rig, la synchronisation audio (clap), ou relancez le tracking avec "
+                "une seule des deux GoPro plutôt que de fusionner un résultat incohérent."
+            )
 
     def _fuse_pose(self, pose_a, pose_b):
         cam_to_world_a = pose_a.inverse()
@@ -100,6 +139,8 @@ class DualTracker:
         common_indices = sorted(set(poses1_by_index) & set(shifted_poses2_by_index))
         only_in_1 = sorted(set(poses1_by_index) - set(shifted_poses2_by_index))
         only_in_2 = sorted(set(shifted_poses2_by_index) - set(poses1_by_index))
+
+        self._check_consistency(poses1_by_index, shifted_poses2_by_index, common_indices, report)
 
         fused_by_index = {}
         for index in common_indices:

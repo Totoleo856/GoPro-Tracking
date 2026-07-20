@@ -7,6 +7,16 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.8.0] - 2026-07-20
+
+### Ajouté
+- Mode Tracking à 2 GoPro : vérification de cohérence entre les deux reconstructions
+  avant fusion. L'écart de position (mm) sur les frames communes après synchronisation
+  audio est calculé et affiché systématiquement ; si aucune frame commune n'est trouvée,
+  ou si l'écart dépasse une tolérance réglable ("Tolérance de cohérence (mm)", 30 mm par
+  défaut), le tracking s'arrête avec une erreur explicite plutôt que de fusionner un
+  résultat incohérent.
+
 ## [1.7.0] - 2026-07-20
 
 ### Ajouté
