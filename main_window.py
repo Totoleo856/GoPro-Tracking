@@ -57,7 +57,7 @@ STYLE_SHEET = """
 QMainWindow, QWidget {
     background-color: #202124;
     color: #d7d9db;
-    font-size: 10.5pt;
+    font-size: 9pt;
 }
 
 QScrollArea {
@@ -75,7 +75,7 @@ QTabWidget::pane {
 QTabBar::tab {
     background: transparent;
     color: #9aa0a6;
-    padding: 10px 20px;
+    padding: 6px 14px;
     margin-right: 2px;
     border-bottom: 2px solid transparent;
     font-weight: 600;
@@ -94,24 +94,24 @@ QGroupBox {
     background-color: #26272b;
     border: 1px solid #34363b;
     border-radius: 8px;
-    margin-top: 20px;
-    padding: 16px 14px 14px 14px;
+    margin-top: 16px;
+    padding: 10px 10px 8px 10px;
     font-weight: 600;
 }
 
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 12px;
+    left: 10px;
     top: -2px;
-    padding: 0 6px;
+    padding: 0 5px;
     color: #8fb4ec;
     background-color: #202124;
 }
 
 QGroupBox::indicator {
-    width: 15px;
-    height: 15px;
+    width: 13px;
+    height: 13px;
     border: 1px solid #4a4d54;
     border-radius: 3px;
     background-color: #1b1c1f;
@@ -146,7 +146,7 @@ QLineEdit, QComboBox {
     background-color: #2b2d31;
     border: 1px solid #3d3f45;
     border-radius: 6px;
-    padding: 6px 8px;
+    padding: 4px 6px;
     color: #eaecee;
     selection-background-color: #5b8def;
 }
@@ -177,7 +177,7 @@ QPushButton {
     background-color: #2f3136;
     border: 1px solid #3d3f45;
     border-radius: 6px;
-    padding: 7px 16px;
+    padding: 5px 12px;
     color: #d7d9db;
 }
 
@@ -200,9 +200,9 @@ QPushButton#primaryButton {
     color: white;
     border: none;
     border-radius: 8px;
-    padding: 12px 30px;
+    padding: 8px 22px;
     font-weight: 600;
-    font-size: 11pt;
+    font-size: 10pt;
 }
 
 QPushButton#primaryButton:hover {

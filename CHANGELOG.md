@@ -7,6 +7,12 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.9.1] - 2026-07-20
+
+### Modifié
+- Interface resserrée dans l'ensemble de l'app : police, champs, boutons et encadrés
+  plus compacts (moins d'espace perdu à l'écran).
+
 ## [1.9.0] - 2026-07-20
 
 ### Ajouté
