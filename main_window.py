@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -289,13 +290,17 @@ class TrackingWorker(QObject):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, tracker):
+    def __init__(self, tracker, output_path=None):
         super().__init__()
         self.tracker = tracker
+        self.output_path = output_path
 
     def run(self):
         try:
-            output_path = self.tracker.run(progress_callback=self.progress.emit)
+            kwargs = {"progress_callback": self.progress.emit}
+            if self.output_path:
+                kwargs["output_path"] = self.output_path
+            output_path = self.tracker.run(**kwargs)
         except Exception as exc:
             self.error.emit(str(exc))
             return
@@ -336,6 +341,13 @@ class MainWindow(QMainWindow):
             if on_selected:
                 on_selected(file_path)
 
+    def browse_folder(self, line_edit, on_selected=None):
+        folder_path = QFileDialog.getExistingDirectory(self, "Choisir un dossier")
+        if folder_path:
+            line_edit.setText(folder_path)
+            if on_selected:
+                on_selected(folder_path)
+
     def create_scroll_area(self, widget: QWidget) -> QScrollArea:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -356,6 +368,18 @@ class MainWindow(QMainWindow):
         row_layout.addWidget(browse_button)
         if on_selected:
             line_edit.editingFinished.connect(lambda: on_selected(line_edit.text()))
+        return row_widget
+
+    def create_folder_row(self, line_edit, button_text="Parcourir"):
+        line_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+        row_layout.addWidget(line_edit)
+        browse_button = QPushButton(button_text)
+        browse_button.clicked.connect(lambda: self.browse_folder(line_edit))
+        row_layout.addWidget(browse_button)
         return row_widget
 
     def set_compact_field(self, widget, width=90):
@@ -494,10 +518,10 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Aperçu 3D de la trajectoire
     # ------------------------------------------------------------------
-    def _style_3d_axes(self, ax, figure):
+    def _style_3d_axes(self, ax, figure, show_grid=True):
         background = "#202124"
         panel = "#26272b"
-        grid_color = (0.20, 0.21, 0.23, 1)
+        grid_color = (0.20, 0.21, 0.23, 1) if show_grid else (0, 0, 0, 0)
         text_color = "#c7c9cc"
 
         figure.patch.set_facecolor(background)
@@ -507,6 +531,7 @@ class MainWindow(QMainWindow):
             axis.pane.set_edgecolor("#34363b")
             axis._axinfo["grid"]["color"] = grid_color
             axis.label.set_color(text_color)
+        ax.grid(show_grid)
         ax.tick_params(colors=text_color)
         ax.title.set_color("#eaecee")
 
@@ -534,6 +559,14 @@ class MainWindow(QMainWindow):
             )
 
     def _reset_trajectory_plot(self, message=""):
+        self._trajectory_positions = None
+        if hasattr(self, "trajectory_slider"):
+            self.trajectory_slider.blockSignals(True)
+            self.trajectory_slider.setEnabled(False)
+            self.trajectory_slider.setMinimum(0)
+            self.trajectory_slider.setMaximum(0)
+            self.trajectory_slider.blockSignals(False)
+            self.trajectory_slider_label.setText("")
         if self.verification_canvas is None:
             return
         ax = self.verification_axes
@@ -576,7 +609,7 @@ class MainWindow(QMainWindow):
         board_collection = Poly3DCollection(quads, facecolors=colors, edgecolors="#5b8def", linewidths=0.3, alpha=0.9)
         ax.add_collection3d(board_collection)
 
-    def _plot_trajectory(self, positions, rotations, board=None):
+    def _plot_trajectory(self, positions, rotations, board=None, frame_indices=None, fps=0.0):
         if self.verification_canvas is None:
             return
         ax = self.verification_axes
@@ -609,12 +642,10 @@ class MainWindow(QMainWindow):
         depth = half_range * 0.12
         half_w = depth * 0.55
         half_h = depth * 0.38
-        segments = []
-        for i in indices:
-            segments.extend(self._camera_frustum_segments(
-                positions[i], rights[i], ups[i], forwards[i], depth, half_w, half_h
-            ))
-        ax.add_collection3d(Line3DCollection(segments, colors="#8fb4ec", linewidths=1))
+        ax.scatter(
+            positions[indices, 0], positions[indices, 1], positions[indices, 2],
+            color="#8fb4ec", s=12, depthshade=False,
+        )
 
         axis_length = half_range * 0.2
         ax.quiver(0, 0, 0, 1, 0, 0, length=axis_length, color="#e05252")
@@ -622,8 +653,58 @@ class MainWindow(QMainWindow):
         ax.quiver(0, 0, 0, 0, 0, 1, length=axis_length, color="#5b8def")
         ax.scatter(0, 0, 0, color="#eaecee", s=35, marker="x", label="Origine (cible Charuco)", depthshade=False)
 
+        # Curseur de lecture : une frustum mise en avant (couleur distincte, plus grande)
+        # pour la position/orientation courante, mise à jour en place par le slider sans
+        # redessiner toute la trajectoire (cf. _on_trajectory_slider_changed).
+        current_segments = self._camera_frustum_segments(
+            positions[0], rights[0], ups[0], forwards[0], depth * 1.6, half_w * 1.6, half_h * 1.6
+        )
+        self._current_pose_frustum = Line3DCollection(current_segments, colors="#ffb74d", linewidths=2.2)
+        ax.add_collection3d(self._current_pose_frustum)
+        self._current_pose_point = ax.scatter(
+            *positions[0], color="#ffb74d", s=60, label="Curseur", depthshade=False,
+        )
+
         ax.legend(facecolor="#26272b", labelcolor="#c7c9cc", edgecolor="#34363b", loc="upper right", fontsize=8)
+
+        self._trajectory_positions = positions
+        self._trajectory_rights = rights
+        self._trajectory_ups = ups
+        self._trajectory_forwards = forwards
+        self._trajectory_frame_indices = frame_indices or list(range(len(positions)))
+        self._trajectory_fps = fps
+        self._trajectory_frustum_scale = (depth * 1.6, half_w * 1.6, half_h * 1.6)
+
+        self.trajectory_slider.blockSignals(True)
+        self.trajectory_slider.setEnabled(len(positions) > 1)
+        self.trajectory_slider.setMinimum(0)
+        self.trajectory_slider.setMaximum(len(positions) - 1)
+        self.trajectory_slider.setValue(0)
+        self.trajectory_slider.blockSignals(False)
+        self._update_trajectory_slider_label(0)
         self.verification_canvas.draw()
+
+    def _update_trajectory_slider_label(self, index):
+        frame_index = self._trajectory_frame_indices[index]
+        text = f"Frame {frame_index}"
+        if self._trajectory_fps:
+            text += f"  —  {frame_index / self._trajectory_fps:.2f} s"
+        self.trajectory_slider_label.setText(text)
+
+    def _on_trajectory_slider_changed(self, index):
+        if self._trajectory_positions is None:
+            return
+        depth, half_w, half_h = self._trajectory_frustum_scale
+        segments = self._camera_frustum_segments(
+            self._trajectory_positions[index], self._trajectory_rights[index],
+            self._trajectory_ups[index], self._trajectory_forwards[index],
+            depth, half_w, half_h,
+        )
+        self._current_pose_frustum.set_segments(segments)
+        position = self._trajectory_positions[index]
+        self._current_pose_point._offsets3d = ([position[0]], [position[1]], [position[2]])
+        self._update_trajectory_slider_label(index)
+        self.verification_canvas.draw_idle()
 
     # ------------------------------------------------------------------
     # Aperçu du rig (offset GoPro / caméra cinéma)
@@ -633,11 +714,8 @@ class MainWindow(QMainWindow):
             return
         ax = self.rig_axes
         ax.clear()
-        self._style_3d_axes(ax, self.rig_figure)
-        ax.set_xlabel("X (m)")
-        ax.set_ylabel("Y (m)")
-        ax.set_zlabel("Z (m)")
-        ax.set_title("Rig GoPro / caméra cinéma")
+        self._style_3d_axes(ax, self.rig_figure, show_grid=False)
+        ax.set_axis_off()
         if message:
             ax.text2D(
                 0.5, 0.5, message, transform=ax.transAxes,
@@ -650,11 +728,8 @@ class MainWindow(QMainWindow):
             return
         ax = self.rig_axes
         ax.clear()
-        self._style_3d_axes(ax, self.rig_figure)
-        ax.set_xlabel("X (m)")
-        ax.set_ylabel("Y (m)")
-        ax.set_zlabel("Z (m)")
-        ax.set_title("Rig GoPro / caméra cinéma")
+        self._style_3d_axes(ax, self.rig_figure, show_grid=False)
+        ax.set_axis_off()
 
         positions = np.array([[0.0, 0.0, 0.0], gopro_translation])
         half_range = self._set_axes_equal(ax, positions, min_half_range=0.05)
@@ -1310,9 +1385,21 @@ class MainWindow(QMainWindow):
         self.tracking_mode.currentIndexChanged.connect(self._update_tracking_mode_fields)
         self._update_tracking_mode_fields()
 
+        destination_group = QGroupBox("Destination")
+        destination_form = QFormLayout(destination_group)
+        destination_form.setHorizontalSpacing(14)
+        destination_form.setVerticalSpacing(10)
+
+        self.tracking_output_folder = QLineEdit()
+        self.tracking_output_folder.setPlaceholderText("data/ (par défaut)")
+        destination_form.addRow(
+            "Dossier de destination (optionnel)", self.create_folder_row(self.tracking_output_folder)
+        )
+
         inner_layout.addWidget(inputs_group)
         inner_layout.addWidget(self.gopro2_group)
         inner_layout.addWidget(mode_group)
+        inner_layout.addWidget(destination_group)
         inner_layout.addStretch()
 
         scroll_area = self.create_scroll_area(inner)
@@ -1388,11 +1475,14 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Erreur de tracking", str(exc))
             return
 
+        output_folder = self.tracking_output_folder.text().strip()
+        output_path = os.path.join(output_folder, "tracking.json") if output_folder else None
+
         self.tracking_button.setEnabled(False)
         self._set_progress(self.tracking_progress, self.tracking_status, 0, "Démarrage du tracking...")
 
         self._tracking_thread = QThread(self)
-        self._tracking_worker = TrackingWorker(tracker)
+        self._tracking_worker = TrackingWorker(tracker, output_path=output_path)
         self._tracking_worker.moveToThread(self._tracking_thread)
 
         self._tracking_thread.started.connect(self._tracking_worker.run)
@@ -1491,6 +1581,13 @@ class MainWindow(QMainWindow):
         viewer_layout = QVBoxLayout(viewer_group)
         viewer_layout.setContentsMargins(10, 10, 10, 10)
 
+        self._trajectory_positions = None
+        self.trajectory_slider = QSlider(Qt.Orientation.Horizontal)
+        self.trajectory_slider.setEnabled(False)
+        self.trajectory_slider.valueChanged.connect(self._on_trajectory_slider_changed)
+        self.trajectory_slider_label = QLabel("")
+        self.trajectory_slider_label.setObjectName("statusLabel")
+
         if FigureCanvasQTAgg is not None:
             self.verification_figure = Figure(figsize=(5, 4))
             self.verification_canvas = FigureCanvasQTAgg(self.verification_figure)
@@ -1498,6 +1595,8 @@ class MainWindow(QMainWindow):
             self.verification_axes = self.verification_figure.add_subplot(111, projection="3d")
             self._reset_trajectory_plot("Sélectionnez un fichier de tracking pour afficher la trajectoire")
             viewer_layout.addWidget(self.verification_canvas)
+            viewer_layout.addWidget(self.trajectory_slider)
+            viewer_layout.addWidget(self.trajectory_slider_label)
         else:
             self.verification_canvas = None
             placeholder = QLabel(
@@ -1565,7 +1664,9 @@ class MainWindow(QMainWindow):
         # qui ne change ni les distances ni le sens réel des mouvements.
         positions[:, [1, 2]] *= -1.0
         rotations[:, :, [1, 2]] *= -1.0
-        return positions, rotations, len(frames)
+        frame_indices = [int(frame["index"]) for frame in frames]
+        fps = float(data.get("fps") or 0.0)
+        return positions, rotations, frame_indices, fps
 
     def _load_charuco_board(self, path):
         path = Path(path)
@@ -1587,11 +1688,12 @@ class MainWindow(QMainWindow):
             return False
 
         try:
-            positions, rotations, frame_count = self._load_tracking_positions(path)
+            positions, rotations, frame_indices, fps = self._load_tracking_positions(path)
         except Exception as exc:
             if notify_errors:
                 QMessageBox.critical(self, "Erreur de lecture", f"Impossible de lire le fichier de tracking :\n{exc}")
             return False
+        frame_count = len(frame_indices)
 
         board = None
         calibration_path = self.verification_calibration_file.text()
@@ -1607,7 +1709,7 @@ class MainWindow(QMainWindow):
                 board = None
 
         if self.verification_canvas is not None:
-            self._plot_trajectory(positions, rotations, board)
+            self._plot_trajectory(positions, rotations, board, frame_indices, fps)
             self._set_progress(
                 self.verification_progress, self.verification_status, 100,
                 f"{frame_count} poses chargées",

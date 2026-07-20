@@ -66,7 +66,7 @@ class DualTracker:
         rotation = average_rotations([cam_to_world_a.rotation, cam_to_world_b.rotation])
         return Pose(rotation=rotation, translation=center).inverse()
 
-    def run(self, progress_callback=None):
+    def run(self, progress_callback=None, output_path="data/tracking.json"):
         def report(pct, message):
             if progress_callback:
                 progress_callback(pct, message)
@@ -129,7 +129,7 @@ class DualTracker:
         )
 
         report(98, "Écriture du fichier de tracking...")
-        output = Path("data/tracking.json")
+        output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         result = {
             "fps": cinema_fps,

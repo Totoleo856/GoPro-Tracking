@@ -7,6 +7,23 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.7.0] - 2026-07-20
+
+### Ajouté
+- Onglet Vérification : curseur (slider) sous l'aperçu 3D de trajectoire pour se déplacer
+  pose par pose, avec une frustum mise en avant à la position courante et un label
+  affichant l'index de frame réel et le timecode.
+- Onglet Tracking : champ "Dossier de destination" (optionnel) pour choisir où écrire le
+  fichier de tracking généré, au lieu du chemin `data/tracking.json` fixe (fonctionne en
+  mode simple comme double GoPro).
+
+### Modifié
+- Onglet Vérification : les positions échantillonnées le long de la trajectoire sont
+  affichées comme de simples points (au lieu d'un schéma de caméra à chacune) pour ne
+  garder le détail visuel que sur la position courante du curseur.
+- Aperçu du rig (GoPro / caméra cinéma) simplifié : quadrillage, cube/graduations et titre
+  du graphique retirés, ne conservant que les schémas de caméra, la légende et la distance.
+
 ## [1.6.0] - 2026-07-20
 
 ### Ajouté
