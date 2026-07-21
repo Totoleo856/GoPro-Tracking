@@ -94,7 +94,7 @@ QGroupBox {
     background-color: #26272b;
     border: 1px solid #34363b;
     border-radius: 8px;
-    margin-top: 16px;
+    margin-top: 4px;
     padding: 10px 10px 8px 10px;
     font-weight: 600;
 }
@@ -357,13 +357,26 @@ class MainWindow(QMainWindow):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         return scroll
 
-    def create_file_row(self, line_edit, button_text="Parcourir", filter="All Files (*)", on_selected=None):
+    def create_file_row(self, line_edit, button_text="Parcourir", filter="All Files (*)", on_selected=None, clearable=False):
         line_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.setSpacing(6)
         row_layout.addWidget(line_edit)
+        if clearable:
+            clear_button = QPushButton("×")
+            clear_button.setFixedWidth(32)
+            clear_button.setStyleSheet("font-size: 16pt; font-weight: 700; padding: 0px;")
+            clear_button.setToolTip("Effacer")
+
+            def handle_clear():
+                line_edit.clear()
+                if on_selected:
+                    on_selected("")
+
+            clear_button.clicked.connect(handle_clear)
+            row_layout.addWidget(clear_button)
         browse_button = QPushButton(button_text)
         browse_button.clicked.connect(lambda: self.browse_file(line_edit, filter, on_selected))
         row_layout.addWidget(browse_button)
@@ -724,7 +737,30 @@ class MainWindow(QMainWindow):
             )
         self.rig_canvas.draw()
 
-    def _plot_rig(self, gopro_rotation, gopro_translation):
+    def _add_rig_camera(self, ax, position, rotation, color, label, depth, half_w, half_h):
+        # rig_transform (ou l'identité pour la caméra cinéma) est déjà l'équivalent d'une
+        # pose "caméra->monde" où le "monde" est ici le repère de la caméra cinéma (cf.
+        # investigation calibration) : la position est directement la translation, et les
+        # axes locaux de la caméra dans ce repère sont les COLONNES (pas les lignes) de
+        # sa rotation.
+        rights = rotation[:, 0]
+        ups = -rotation[:, 1]
+        forwards = rotation[:, 2]
+        segments = self._camera_frustum_segments(position, rights, ups, forwards, depth, half_w, half_h)
+        ax.add_collection3d(Line3DCollection(segments, colors=color, linewidths=1.5))
+        ax.scatter(*position, color=color, s=45, label=label, depthshade=False)
+
+    def _add_rig_camera_with_distance(self, ax, position, rotation, color, label, depth, half_w, half_h):
+        self._add_rig_camera(ax, position, rotation, color, label, depth, half_w, half_h)
+        ax.plot(
+            [0.0, position[0]], [0.0, position[1]], [0.0, position[2]],
+            color=color, linestyle="--", linewidth=1,
+        )
+        distance_cm = float(np.linalg.norm(position)) * 100.0
+        midpoint = position / 2.0
+        ax.text(midpoint[0], midpoint[1], midpoint[2], f"{distance_cm:.1f} cm", color="#c7c9cc", fontsize=8)
+
+    def _plot_rig(self, gopro_rotation=None, gopro_translation=None, gopro2_rotation=None, gopro2_translation=None):
         if self.rig_canvas is None:
             return
         ax = self.rig_axes
@@ -732,70 +768,77 @@ class MainWindow(QMainWindow):
         self._style_3d_axes(ax, self.rig_figure, show_grid=False)
         ax.set_axis_off()
 
-        positions = np.array([[0.0, 0.0, 0.0], gopro_translation])
-        half_range = self._set_axes_equal(ax, positions, min_half_range=0.05)
+        bounds = [np.zeros(3)]
+        if gopro_translation is not None:
+            bounds.append(gopro_translation)
+        if gopro2_translation is not None:
+            bounds.append(gopro2_translation)
+        half_range = self._set_axes_equal(ax, np.array(bounds), min_half_range=0.05)
 
         depth = half_range * 0.4
         half_w = depth * 0.55
         half_h = depth * 0.38
 
-        # Caméra cinéma : origine de ce repère, orientation identité.
-        cinema_segments = self._camera_frustum_segments(
-            np.zeros(3), np.array([1.0, 0.0, 0.0]), np.array([0.0, -1.0, 0.0]), np.array([0.0, 0.0, 1.0]),
-            depth, half_w, half_h,
-        )
-        ax.add_collection3d(Line3DCollection(cinema_segments, colors="#e05252", linewidths=1.5))
-        ax.scatter(0, 0, 0, color="#e05252", s=45, label="Caméra cinéma", depthshade=False)
+        identity = np.eye(3)
+        self._add_rig_camera(ax, np.zeros(3), identity, "#e05252", "Caméra cinéma", depth, half_w, half_h)
 
-        # GoPro : rig_transform est déjà l'équivalent d'une pose "caméra->monde" où le
-        # "monde" est ici le repère de la caméra cinéma (cf. investigation calibration) :
-        # la position est directement rig_transform.translation, et les axes locaux de
-        # la GoPro dans ce repère sont les COLONNES (pas les lignes) de sa rotation.
-        gopro_rights = gopro_rotation[:, 0]
-        gopro_ups = -gopro_rotation[:, 1]
-        gopro_forwards = gopro_rotation[:, 2]
-        gopro_segments = self._camera_frustum_segments(
-            gopro_translation, gopro_rights, gopro_ups, gopro_forwards, depth, half_w, half_h,
-        )
-        ax.add_collection3d(Line3DCollection(gopro_segments, colors="#8fb4ec", linewidths=1.5))
-        ax.scatter(*gopro_translation, color="#8fb4ec", s=45, label="GoPro", depthshade=False)
-
-        ax.plot(
-            [0.0, gopro_translation[0]], [0.0, gopro_translation[1]], [0.0, gopro_translation[2]],
-            color="#5b8def", linestyle="--", linewidth=1,
-        )
-        distance_cm = float(np.linalg.norm(gopro_translation)) * 100.0
-        midpoint = gopro_translation / 2.0
-        ax.text(midpoint[0], midpoint[1], midpoint[2], f"{distance_cm:.1f} cm", color="#c7c9cc", fontsize=8)
+        if gopro_translation is not None:
+            self._add_rig_camera_with_distance(
+                ax, gopro_translation, gopro_rotation, "#8fb4ec", "GoPro 1", depth, half_w, half_h
+            )
+        if gopro2_translation is not None:
+            self._add_rig_camera_with_distance(
+                ax, gopro2_translation, gopro2_rotation, "#4caf50", "GoPro 2", depth, half_w, half_h
+            )
 
         ax.legend(facecolor="#26272b", labelcolor="#c7c9cc", edgecolor="#34363b", loc="upper right", fontsize=8)
         self.rig_canvas.draw()
 
-    def _preview_calibration_rig(self, path):
-        if not path:
+    def _load_rig_transform(self, path):
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        rig_transform = data["rig_transform"]
+        rotation = np.array(rig_transform["rotation_matrix"], dtype=np.float64)
+        translation = np.array(
+            [
+                rig_transform["translation"]["x"],
+                rig_transform["translation"]["y"],
+                rig_transform["translation"]["z"],
+            ],
+            dtype=np.float64,
+        )
+        return rotation, translation
+
+    def _preview_calibration_rig(self, path, path2=None):
+        if not path and not path2:
             self._reset_rig_plot("Sélectionnez un fichier de calibration pour afficher le rig")
             return
-        try:
-            with open(path, "r", encoding="utf-8") as file:
-                data = json.load(file)
-            rig_transform = data["rig_transform"]
-            rotation = np.array(rig_transform["rotation_matrix"], dtype=np.float64)
-            translation = np.array(
-                [
-                    rig_transform["translation"]["x"],
-                    rig_transform["translation"]["y"],
-                    rig_transform["translation"]["z"],
-                ],
-                dtype=np.float64,
-            )
-        except Exception as exc:
-            QMessageBox.critical(
-                self, "Erreur de lecture",
-                f"Impossible de lire le rig depuis ce fichier de calibration :\n{exc}",
-            )
+
+        rotation = translation = None
+        if path:
+            try:
+                rotation, translation = self._load_rig_transform(path)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self, "Erreur de lecture",
+                    f"Impossible de lire le rig depuis le fichier de calibration GoPro 1 :\n{exc}",
+                )
+
+        rotation2 = translation2 = None
+        if path2:
+            try:
+                rotation2, translation2 = self._load_rig_transform(path2)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self, "Erreur de lecture",
+                    f"Impossible de lire le rig depuis le fichier de calibration GoPro 2 :\n{exc}",
+                )
+
+        if translation is None and translation2 is None:
             self._reset_rig_plot("Fichier de calibration invalide")
             return
-        self._plot_rig(rotation, translation)
+
+        self._plot_rig(rotation, translation, rotation2, translation2)
 
     # ------------------------------------------------------------------
     # Onglet Calibration
@@ -1549,15 +1592,23 @@ class MainWindow(QMainWindow):
 
         form.addRow("Fichier résultat", self.create_file_row(
             self.tracking_result_file, "Parcourir", "Résultats tracking (*.json *.csv);;Tous les fichiers (*)",
-            on_selected=self._auto_preview_tracking,
+            on_selected=self._auto_preview_tracking, clearable=True,
         ))
 
         self.verification_calibration_file = QLineEdit()
         self.verification_calibration_file.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        form.addRow("Calibration (optionnel)", self.create_file_row(
+        form.addRow("Calibration GoPro 1 (optionnel)", self.create_file_row(
             self.verification_calibration_file, "Parcourir", "Calibration (*.json);;Tous les fichiers (*)",
-            on_selected=self._auto_preview_calibration,
+            on_selected=self._auto_preview_calibration, clearable=True,
+        ))
+
+        self.verification_calibration_file_2 = QLineEdit()
+        self.verification_calibration_file_2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        form.addRow("Calibration GoPro 2 (optionnel)", self.create_file_row(
+            self.verification_calibration_file_2, "Parcourir", "Calibration (*.json);;Tous les fichiers (*)",
+            on_selected=self._auto_preview_calibration, clearable=True,
         ))
 
         inner_layout.addWidget(result_group)
@@ -1737,10 +1788,15 @@ class MainWindow(QMainWindow):
         return True
 
     def _auto_preview_tracking(self, path):
+        if not path:
+            self._reset_trajectory_plot("Sélectionnez un fichier de tracking pour afficher la trajectoire")
+            return
         self._preview_tracking_file(path, notify_errors=True)
 
-    def _auto_preview_calibration(self, calibration_path):
-        self._preview_calibration_rig(calibration_path)
+    def _auto_preview_calibration(self, _calibration_path):
+        self._preview_calibration_rig(
+            self.verification_calibration_file.text(), self.verification_calibration_file_2.text()
+        )
         if self.tracking_result_file.text():
             self._preview_tracking_file(self.tracking_result_file.text(), notify_errors=True)
 

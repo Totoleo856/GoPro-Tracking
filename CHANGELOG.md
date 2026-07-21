@@ -7,6 +7,19 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.10.0] - 2026-07-20
+
+### Ajouté
+- Onglet Vérification : second champ de calibration optionnel ("Calibration GoPro 2")
+  pour afficher les deux GoPro du mode double rig dans la même visionneuse (caméra
+  cinéma + GoPro 1 + GoPro 2), avec leurs distances respectives.
+- Bouton "×" pour vider/décharger un fichier sur les champs "Fichier résultat",
+  "Calibration GoPro 1" et "Calibration GoPro 2" de l'onglet Vérification.
+
+### Corrigé
+- L'aperçu du rig ne fonctionnait que si "Calibration GoPro 1" était rempli en premier —
+  chaque champ de calibration (GoPro 1, GoPro 2) fonctionne désormais indépendamment.
+
 ## [1.9.1] - 2026-07-20
 
 ### Modifié
