@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 data/
 profiles/
+build/
+dist/
+*.exe
+installer/Output/

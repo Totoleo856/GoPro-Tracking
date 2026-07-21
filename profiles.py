@@ -1,7 +1,26 @@
 import json
+import shutil
 from pathlib import Path
 
-PROFILES_ROOT = Path(__file__).parent / "profiles"
+from app_paths import install_dir, user_data_root
+
+PROFILES_ROOT = user_data_root() / "profiles"
+_LEGACY_PROFILES_ROOT = install_dir() / "profiles"
+
+
+def _migrate_legacy_profiles():
+    """
+    Avant cette version, les profils étaient stockés à côté du script/exécutable — un
+    dossier en lecture seule une fois l'app installée (Program Files). On les copie une
+    seule fois vers le nouveau dossier utilisateur, sans jamais toucher/supprimer
+    l'ancien dossier.
+    """
+    if PROFILES_ROOT.exists() or not _LEGACY_PROFILES_ROOT.exists():
+        return
+    shutil.copytree(_LEGACY_PROFILES_ROOT, PROFILES_ROOT)
+
+
+_migrate_legacy_profiles()
 
 
 def _dir_for(kind: str) -> Path:

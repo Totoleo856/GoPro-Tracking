@@ -8,6 +8,7 @@ except ImportError:
     cv2 = None
     np = None
 
+from app_paths import default_tracking_output_path
 from camera import Camera
 from pose import Pose
 from rig import Rig
@@ -127,7 +128,8 @@ class Tracker:
         fps = capture.get(cv2.CAP_PROP_FPS)
         return float(fps if fps > 0.0 else 25.0)
 
-    def run(self, progress_callback=None, output_path="data/tracking.json"):
+    def run(self, progress_callback=None, output_path=None):
+        output_path = output_path or default_tracking_output_path()
         if not Path(self.video).exists():
             raise FileNotFoundError(self.video)
         if cv2 is None or np is None:

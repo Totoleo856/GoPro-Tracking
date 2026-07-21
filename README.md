@@ -1,6 +1,6 @@
 # GoPro Cinema Camera Tracker
 
-Version actuelle : **1.10.0** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
+Version actuelle : **1.11.0** — voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
 
 ## Vision du projet
 
@@ -117,7 +117,28 @@ python main.py
 
 Le tracking par Structure-from-Motion (voir plus bas) s'appuie sur [COLMAP](https://colmap.github.io/) via son binding Python `pycolmap` (licence BSD, usage commercial autorisé), installé automatiquement avec les dépendances ci-dessus — aucune installation séparée de COLMAP n'est nécessaire.
 
-Les presets (`profiles/`) et les fichiers de tracking générés (`data/`) ne sont pas versionnés (`.gitignore`) : sur une nouvelle machine, il faut recréer les presets ou copier manuellement le dossier `profiles/` depuis une installation existante.
+Les presets et les fichiers de tracking générés par défaut sont stockés dans le dossier utilisateur (`%APPDATA%\GoPro-Tracking` sous Windows), pas dans le dossier du projet — ils survivent donc à une mise à jour ou une réinstallation de l'app.
+
+---
+
+## Build d'un installeur Windows (diffusion à des collègues)
+
+Pour générer un installeur autonome (aucune installation de Python/conda nécessaire côté utilisateur final) :
+
+```bash
+pip install pyinstaller
+python -m PyInstaller GoProTracking.spec --noconfirm
+```
+
+Puis compiler l'installeur avec [Inno Setup](https://jrsoftware.org/isinfo.php) (`installer/GoProTracking.iss`) :
+
+```bash
+"C:\Users\<vous>\AppData\Local\Programs\Inno Setup 6\ISCC.exe" installer\GoProTracking.iss
+```
+
+L'installeur généré se trouve dans `installer/Output/`. Il installe l'app sans droits administrateur (dans le profil de l'utilisateur si celui-ci n'est pas admin), crée un raccourci menu Démarrer et un désinstalleur.
+
+Penser à mettre à jour `MyAppVersion` dans `installer/GoProTracking.iss` en même temps que `version.py` à chaque nouvelle version.
 
 ---
 

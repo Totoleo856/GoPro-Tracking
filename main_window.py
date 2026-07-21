@@ -1446,7 +1446,7 @@ class MainWindow(QMainWindow):
         destination_form.setVerticalSpacing(10)
 
         self.tracking_output_folder = QLineEdit()
-        self.tracking_output_folder.setPlaceholderText("data/ (par défaut)")
+        self.tracking_output_folder.setPlaceholderText("Dossier utilisateur par défaut")
         destination_form.addRow(
             "Dossier de destination (optionnel)", self.create_folder_row(self.tracking_output_folder)
         )

@@ -17,6 +17,7 @@ except ImportError:
     pycolmap = None
 
 from alignment import average_rotations, robust_umeyama_alignment
+from app_paths import default_tracking_output_path
 from pose import Pose
 from tracking import Tracker
 from trajectory import Trajectory
@@ -248,7 +249,9 @@ class SfmTracker:
         new_cam_to_world = Pose(rotation=new_rotation, translation=new_center)
         return new_cam_to_world.inverse()
 
-    def run(self, progress_callback=None, output_path="data/tracking.json"):
+    def run(self, progress_callback=None, output_path=None):
+        output_path = output_path or default_tracking_output_path()
+
         def report(pct, message):
             if progress_callback:
                 progress_callback(pct, message)

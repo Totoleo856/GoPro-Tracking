@@ -7,6 +7,22 @@ et ce projet suit [Semantic Versioning](https://semver.org/lang/fr/) (MAJOR.MINO
 
 ## [Non publié]
 
+## [1.11.0] - 2026-07-21
+
+### Ajouté
+- **Premier build installeur Windows**, pour diffuser l'app à des collègues sans qu'ils
+  aient besoin d'installer Python/conda :
+  - Empaquetage autonome via PyInstaller (`GoProTracking.spec`).
+  - Installeur `.exe` via Inno Setup (`installer/GoProTracking.iss`) : sans droits admin
+    requis, raccourci menu Démarrer, désinstalleur propre. Instructions de build dans le
+    README.
+  - Icône de l'app (`Icone.png` / `icon.ico`), affichée dans la fenêtre et l'exécutable.
+- Les profils et fichiers de tracking par défaut sont désormais stockés dans le dossier
+  utilisateur (`%APPDATA%\GoPro-Tracking`) plutôt qu'à côté du script — indispensable une
+  fois l'app installée (`Program Files` est en lecture seule pour un utilisateur
+  standard). Migration automatique et transparente des profils existants au premier
+  lancement, sans toucher à l'ancien dossier.
+
 ## [1.10.0] - 2026-07-20
 
 ### Ajouté

@@ -1,7 +1,10 @@
 import sys
 
 from PyQt6.QtCore import QLocale
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
+
+from app_paths import resource_path
 from main_window import MainWindow
 
 
@@ -13,8 +16,10 @@ if __name__ == "__main__":
     QLocale.setDefault(QLocale(QLocale.Language.C))
 
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(str(resource_path("Icone.png"))))
 
     window = MainWindow()
+    window.setWindowIcon(QIcon(str(resource_path("Icone.png"))))
     window.show()
 
     sys.exit(app.exec())

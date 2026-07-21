@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from alignment import average_rotations
+from app_paths import default_tracking_output_path
 from audio_sync import estimate_offset_frames
 from pose import Pose
 from retime import resample_trajectory
@@ -105,7 +106,9 @@ class DualTracker:
         rotation = average_rotations([cam_to_world_a.rotation, cam_to_world_b.rotation])
         return Pose(rotation=rotation, translation=center).inverse()
 
-    def run(self, progress_callback=None, output_path="data/tracking.json"):
+    def run(self, progress_callback=None, output_path=None):
+        output_path = output_path or default_tracking_output_path()
+
         def report(pct, message):
             if progress_callback:
                 progress_callback(pct, message)
