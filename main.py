@@ -16,10 +16,10 @@ if __name__ == "__main__":
     QLocale.setDefault(QLocale(QLocale.Language.C))
 
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon(str(resource_path("Icone.png"))))
+    app.setWindowIcon(QIcon(str(resource_path("assets/Icone.png"))))
 
     window = MainWindow()
-    window.setWindowIcon(QIcon(str(resource_path("Icone.png"))))
+    window.setWindowIcon(QIcon(str(resource_path("assets/Icone.png"))))
     window.show()
 
     sys.exit(app.exec())
